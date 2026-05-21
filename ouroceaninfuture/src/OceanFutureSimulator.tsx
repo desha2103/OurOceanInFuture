@@ -60,38 +60,49 @@ export default function OceanFutureSimulator() {
   );
 
   const scenario: Scenario = useMemo(() => {
-    if (health >= 70) {
-      return {
-        status: "Healthy",
-        coral: "Colorful and stable",
-        fish: "Good population",
-        plastic: "Low impact",
-        outlook: "The ocean is under pressure, but still recoverable.",
-        moodClass: "healthy",
-      };
-    }
-
-    if (health >= 40) {
-      return {
-        status: "At Risk",
-        coral: "Bleaching increasing",
-        fish: "Declining",
-        plastic: "Significant impact",
-        outlook:
-          "Marine ecosystems are stressed. Human action is urgently needed.",
-        moodClass: "warning",
-      };
-    }
-
+     if (health >= 85) {
     return {
-      status: "Critical",
-      coral: "Dead coral zones spreading",
-      fish: "Collapse risk",
-      plastic: "Severe pollution",
-      outlook: "The ocean is close to ecological breakdown in this scenario.",
-      moodClass: "critical",
+      status: "Healthy",
+      coral: "Colorful and stable",
+      fish: "Thriving population",
+      plastic: "Minimal impact",
+      outlook: "The ocean is healthy and vibrant.",
+      moodClass: "healthy",
     };
-  }, [health]);
+  }
+
+  if (health >= 70) {
+    return {
+      status: "Mostly Stable",
+      coral: "Mostly healthy",
+      fish: "Stable population",
+      plastic: "Visible pollution",
+      outlook: "Life is still active, but protection is needed.",
+      moodClass: "warning",
+    };
+  }
+
+  if (health >= 40) {
+    return {
+      status: "Warning",
+      coral: "Bleaching increasing",
+      fish: "Population decreasing",
+      plastic: "Significant impact",
+      outlook: "Marine life is decreasing as pressure grows.",
+      moodClass: "warning-low",
+    };
+  }
+
+  return {
+    status: "Critical",
+    coral: "Dead coral zones spreading",
+    fish: "Collapse risk",
+    plastic: "Severe pollution",
+    outlook: "The ecosystem is close to collapse.",
+    moodClass: "critical",
+  };
+
+}, [health]);
 
   function resetScenario() {
     setPollution(40);
@@ -137,71 +148,98 @@ export default function OceanFutureSimulator() {
       </section>
 
       <section className="result-panel glass">
-        <div className="health-circle">
+  <div className="result-top">
+    <div className="health-circle">
+      <div
+        className="health-ring"
+        style={{
+          background: `conic-gradient(
+            #27f5ff ${health * 3.6}deg,
+            rgba(255,255,255,0.15) ${health * 3.6}deg
+          )`,
+        }}
+      >
+        <div className="health-inner">
+          <span className="health-title">Overall Ocean Health Index</span>
+          <strong>{health}%</strong>
+
+          <em>
+            {health >= 85
+              ? "Healthy Ocean"
+              : health >= 70
+              ? "Mostly Stable"
+              : health >= 55
+              ? "Warning Signs Increasing"
+              : health >= 35
+              ? "Human Impact Increasing"
+              : "Critical Ecosystem State"}
+          </em>
+        </div>
+      </div>
+    </div>
+
+    <div className="mini-ocean-animation">
+      <div className="sun-ray"></div>
+      <div className="animated-fish fish-a">🐟</div>
+      <div className="animated-fish fish-b">🐠</div>
+      <div className="animated-fish fish-c">🐡</div>
+
+      <div className="animated-plastic plastic-a">▯</div>
+      <div className="animated-plastic plastic-b">○</div>
+
+      <div className="animated-coral coral-a"></div>
+      <div className="animated-coral coral-b"></div>
+      <div className="animated-coral coral-c"></div>
+
+      <p>
+        {health >= 85
+          ? "The ocean is healthy and vibrant."
+          : health >= 70
+          ? "Life is still active, but protection is needed."
+          : health >= 40
+          ? "Marine life is decreasing as pressure grows."
+          : "The ecosystem is close to collapse."}
+      </p>
+    </div>
+  </div>
+
+  <div className="result-bottom">
+    <div className="ohi-risk-box">
+      <h3>OHI-Inspired Score Meaning</h3>
+
+      <div className="ohi-scale-list">
+        {riskLevels.map((level) => (
           <div
-            className="health-ring"
-            style={{
-              background: `conic-gradient(
-                #27f5ff ${health * 3.6}deg,
-                rgba(255,255,255,0.15) ${health * 3.6}deg
-              )`,
-            }}
+            key={level.label}
+            className={`ohi-scale-row ${
+              health >= level.min && health <= level.max ? "active" : ""
+            }`}
           >
-            <div className="health-inner">
-              <span className="health-title">Overall Ocean Health Index</span>
+            <span className="range">
+              {level.min}–{level.max}%
+            </span>
 
-              <strong>{health}%</strong>
-
-              <em>
-                {health >= 85
-                  ? "Healthy Ocean"
-                  : health >= 70
-                  ? "Mostly Stable"
-                  : health >= 55
-                  ? "Warning Signs Increasing"
-                  : health >= 35
-                  ? "Human Impact Increasing"
-                  : "Critical Ecosystem State"}
-              </em>
+            <div>
+              <strong>{level.label}</strong>
+              <p>{level.note}</p>
             </div>
           </div>
+        ))}
+      </div>
+    </div>
 
-          <div className="ohi-risk-box">
-            <h3>OHI-Inspired Score Meaning</h3>
+    <div className="scenario-info">
+      <h2>Future Ocean Scenario</h2>
 
-            <div className="ohi-scale-list">
-                {riskLevels.map((level) => (
-                <div
-                    key={level.label}
-                    className={`ohi-scale-row ${
-                    health >= level.min && health <= level.max ? "active" : ""
-                    }`}
-                >
-                    <span className="range">
-                    {level.min}–{level.max}%
-                    </span>
+      <InfoRow icon="🪸" title="Coral Reef" value={scenario.coral} />
+      <InfoRow icon="🐠" title="Fish Population" value={scenario.fish} />
+      <InfoRow icon="🧴" title="Plastic Pollution" value={scenario.plastic} />
+      <InfoRow icon="🌍" title="Overall Outlook" value={scenario.outlook} />
 
-                    <div>
-                    <strong>{level.label}</strong>
-                    <p>{level.note}</p>
-                    </div>
-                </div>
-                ))}
-            </div>
-            </div>
-        </div>
-
-        <div className="scenario-info">
-          <h2>Future Ocean Scenario</h2>
-
-          <InfoRow icon="🪸" title="Coral Reef" value={scenario.coral} />
-          <InfoRow icon="🐠" title="Fish Population" value={scenario.fish} />
-          <InfoRow icon="🧴" title="Plastic Pollution" value={scenario.plastic} />
-          <InfoRow icon="🌍" title="Overall Outlook" value={scenario.outlook} />
-
-          <button onClick={resetScenario}>Reset Scenario</button>
-        </div>
-      </section>
+      <button onClick={resetScenario}>Reset Scenario</button>
+    </div>
+  </div>
+</section>
 
       <section className="ocean-visual glass">
         <h2>How This Impacts Human Life</h2>

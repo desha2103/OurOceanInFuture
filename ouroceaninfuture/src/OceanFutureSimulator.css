@@ -211,11 +211,244 @@ input[type="range"] {
 }
 
 .result-panel {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
   padding: 36px;
+}
+
+.result-top {
+  display: grid;
+  grid-template-columns: 320px 1fr;
   gap: 35px;
   align-items: center;
+  margin-bottom: 30px;
+}
+
+.result-bottom {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 35px;
+  align-items: start;
+}
+
+.mini-ocean-animation {
+  position: relative;
+  height: 260px;
+  overflow: hidden;
+  border-radius: 24px;
+  border: 1px solid rgba(39, 245, 255, 0.35);
+  background:
+    linear-gradient(to bottom, rgba(0, 210, 255, 0.16), rgba(0, 8, 18, 0.9)),
+    radial-gradient(circle at 50% 20%, rgba(39, 245, 255, 0.25), transparent 40%);
+  box-shadow: inset 0 0 35px rgba(39, 245, 255, 0.12);
+}
+
+.sun-ray {
+  position: absolute;
+  top: -80px;
+  left: 35%;
+  width: 180px;
+  height: 360px;
+  background: linear-gradient(to bottom, rgba(255,255,255,0.22), transparent);
+  transform: rotate(18deg);
+  animation: rayMove 5s ease-in-out infinite alternate;
+}
+
+@keyframes rayMove {
+  from {
+    opacity: 0.35;
+    transform: translateX(-20px) rotate(18deg);
+  }
+  to {
+    opacity: 0.8;
+    transform: translateX(30px) rotate(18deg);
+  }
+}
+
+.animated-fish {
+  position: absolute;
+  font-size: 28px;
+  animation: swimAcross 9s linear infinite;
+  transition: opacity 0.6s ease;
+}
+
+.fish-a {
+  top: 70px;
+  left: -60px;
+}
+
+.fish-b {
+  top: 130px;
+  left: -140px;
+  animation-duration: 12s;
+}
+
+.fish-c {
+  top: 40px;
+  left: -220px;
+  animation-duration: 15s;
+}
+
+@keyframes swimAcross {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(850px);
+  }
+}
+
+.animated-coral {
+  position: absolute;
+  bottom: 0;
+  width: 28px;
+  border-radius: 20px 20px 0 0;
+  transform-origin: bottom;
+  animation: coralSway 3s ease-in-out infinite;
+  transition: 0.6s ease;
+}
+
+.coral-a {
+  left: 12%;
+  height: 90px;
+  background: #ff4fa3;
+}
+
+.coral-b {
+  left: 20%;
+  height: 65px;
+  background: #6cff8f;
+  animation-delay: 0.4s;
+}
+
+.coral-c {
+  right: 15%;
+  height: 80px;
+  background: #ff9d42;
+  animation-delay: 0.8s;
+}
+
+@keyframes coralSway {
+  0%, 100% {
+    transform: rotate(-4deg);
+  }
+  50% {
+    transform: rotate(4deg);
+  }
+}
+
+.animated-plastic {
+  position: absolute;
+  font-size: 42px;
+  color: rgba(230, 230, 230, 0.9);
+  opacity: 0;
+  animation: plasticFloat 4s ease-in-out infinite;
+  transition: opacity 0.6s ease;
+}
+
+.plastic-a {
+  top: 50px;
+  right: 20%;
+}
+
+.plastic-b {
+  top: 130px;
+  right: 35%;
+  animation-delay: 1s;
+}
+
+@keyframes plasticFloat {
+  0%, 100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-16px) rotate(12deg);
+  }
+}
+
+.mini-ocean-animation p {
+  position: absolute;
+  left: 24px;
+  right: 24px;
+  bottom: 115px;
+  text-align: center;
+  color: rgba(255,255,255,0.82);
+  font-weight: bold;
+}
+
+/* animation changes based on score mood */
+/* =========================
+   HEALTH LEVEL VISUAL STATES
+========================= */
+
+/* 85+ VERY HEALTHY */
+.ocean-page.healthy .animated-coral {
+  opacity: 1;
+  filter: saturate(1.5) brightness(1.2);
+}
+
+.ocean-page.healthy .animated-fish {
+  opacity: 1;
+  filter: saturate(1.3);
+}
+
+.ocean-page.healthy .animated-plastic {
+  opacity: 0.05;
+}
+
+/* 70-84 STABLE */
+.ocean-page.warning .animated-coral {
+  opacity: 0.8;
+  filter: saturate(1);
+}
+
+.ocean-page.warning .animated-fish {
+  opacity: 0.7;
+}
+
+.ocean-page.warning .animated-plastic {
+  opacity: 0.35;
+}
+
+/* 40-69 PRESSURE GROWING */
+.ocean-page.warning-low .animated-coral {
+  background: #cfcfcf;
+  height: 55px;
+  opacity: 0.55;
+}
+
+.ocean-page.warning-low .animated-fish {
+  opacity: 0.4;
+}
+
+.ocean-page.warning-low .animated-plastic {
+  opacity: 0.7;
+}
+
+/* COLLAPSE */
+.ocean-page.critical .animated-coral {
+  background: #555;
+  height: 28px;
+  opacity: 0.28;
+  animation: none;
+}
+
+.ocean-page.critical .animated-fish {
+  opacity: 0.1;
+}
+
+.ocean-page.critical .animated-plastic {
+  opacity: 1;
+}
+
+/* responsive */
+@media (max-width: 850px) {
+  .result-top,
+  .result-bottom {
+    grid-template-columns: 1fr;
+  }
+
+  .mini-ocean-animation {
+    height: 220px;
+  }
 }
 
 .health-circle {
