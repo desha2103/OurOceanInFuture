@@ -25,25 +25,43 @@ body {
   transition: filter 0.8s ease, background-color 0.8s ease;
 }
 
-.ocean-page.healthy {
-  filter: saturate(1.25) brightness(1.08);
+.ocean-page::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+
+  background-image:
+    linear-gradient(rgba(0, 18, 35, 0.2), rgba(0, 4, 12, 0.8)),
+    url("/ocean-bg.jpg");
+
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
+
+  transition: filter 0.8s ease, opacity 0.8s ease;
 }
 
-.ocean-page.warning {
-  filter: saturate(0.75) brightness(0.82);
+.ocean-page.healthy::before {
+  filter: saturate(1.3) brightness(1.1);
 }
 
-.ocean-page.critical {
-  filter: grayscale(0.55) saturate(0.35) brightness(0.55);
+.ocean-page.warning::before {
+  filter: saturate(0.9) brightness(0.95);
+}
+
+.ocean-page.warning-low::before {
+  filter: saturate(0.55) brightness(0.75);
+}
+
+.ocean-page.critical::before {
+  filter: grayscale(0.65) saturate(0.35) brightness(0.55);
 }
 
 .water-overlay {
   position: absolute;
   inset: 0;
-  background:
-    radial-gradient(circle at 50% 0%, rgba(120, 240, 255, 0.35), transparent 35%),
-    linear-gradient(to bottom, rgba(0, 210, 255, 0.08), rgba(0, 0, 0, 0.65));
-  animation: waterMove 8s ease-in-out infinite alternate;
+  z-index: 1;
   pointer-events: none;
 }
 
