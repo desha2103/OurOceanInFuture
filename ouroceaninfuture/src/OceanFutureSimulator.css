@@ -25,17 +25,14 @@ body {
   transition: filter 0.8s ease, background-color 0.8s ease;
 }
 
-/* When ocean is healthy */
 .ocean-page.healthy {
   filter: saturate(1.25) brightness(1.08);
 }
 
-/* When pollution increases */
 .ocean-page.warning {
   filter: saturate(0.75) brightness(0.82);
 }
 
-/* Dead / polluted ocean feeling */
 .ocean-page.critical {
   filter: grayscale(0.55) saturate(0.35) brightness(0.55);
 }
@@ -108,8 +105,8 @@ body {
 
 .hero h1 {
   margin: 0;
-  font-size: clamp(48px, 8vw, 105px);
-  letter-spacing: 8px;
+  font-size: clamp(42px, 8vw, 96px);
+  letter-spacing: 6px;
   text-transform: uppercase;
   background: linear-gradient(90deg, #ffffff, #35f2ff);
   -webkit-background-clip: text;
@@ -119,7 +116,7 @@ body {
 
 .hero p {
   margin: 12px 0;
-  letter-spacing: 8px;
+  letter-spacing: 6px;
   text-transform: uppercase;
   color: rgba(255, 255, 255, 0.78);
 }
@@ -130,7 +127,7 @@ body {
 }
 
 .glass {
-  max-width: 920px;
+  max-width: 980px;
   margin: 0 auto 18px;
   border: 1px solid rgba(39, 245, 255, 0.65);
   background: rgba(0, 15, 30, 0.62);
@@ -222,8 +219,10 @@ input[type="range"] {
 }
 
 .health-circle {
-  display: grid;
-  place-items: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 22px;
 }
 
 .health-ring {
@@ -262,41 +261,166 @@ input[type="range"] {
 }
 
 .health-title {
-  font-size: 14px;
+  font-size: 13px;
   letter-spacing: 2px;
   text-transform: uppercase;
-
   color: #8fefff;
-
   margin-bottom: 12px;
-
   line-height: 1.4;
 }
 
 .health-inner strong {
-  font-size: 68px;
+  font-size: 64px;
   line-height: 1;
   margin-bottom: 14px;
-
   color: white;
-}
-
-.health-inner span {
-  color: #27f5ff;
-  text-transform: uppercase;
-  letter-spacing: 2px;
 }
 
 .health-inner em {
   color: #ffb84d;
   font-style: normal;
   font-weight: bold;
-
   text-transform: uppercase;
-
   letter-spacing: 1px;
+  font-size: 13px;
+  line-height: 1.3;
+  transition: color 0.5s ease;
+}
 
-  font-size: 15px;
+.ocean-page.healthy .health-inner em {
+  color: #7dff9b;
+}
+
+.ocean-page.warning .health-inner em {
+  color: #ffd36b;
+}
+
+.ocean-page.critical .health-inner em {
+  color: #ff6b6b;
+}
+
+/* OHI risk scale */
+.ohi-risk-box {
+  width: 100%;
+  max-width: 390px;
+  padding: 18px;
+  border-radius: 18px;
+  background: rgba(0, 20, 35, 0.65);
+  border: 1px solid rgba(39, 245, 255, 0.35);
+}
+
+.ohi-risk-box h3 {
+  margin: 0 0 14px;
+  font-size: 14px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: #8fefff;
+  text-align: center;
+}
+
+.ohi-scale-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ohi-scale-row {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  gap: 10px;
+  align-items: center;
+
+  padding: 10px;
+  border-radius: 12px;
+
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+
+  opacity: 0.55;
+  transition: 0.3s ease;
+}
+
+.ohi-scale-row.active {
+  opacity: 1;
+  border-color: #27f5ff;
+  background: rgba(39, 245, 255, 0.12);
+  box-shadow: 0 0 18px rgba(39, 245, 255, 0.18);
+  transform: scale(1.02);
+}
+
+.ohi-scale-row .range {
+  font-size: 13px;
+  font-weight: bold;
+  color: #27f5ff;
+}
+
+.ohi-scale-row strong {
+  display: block;
+  font-size: 13px;
+  color: white;
+  text-transform: uppercase;
+}
+
+.ohi-scale-row p {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.35;
+  color: rgba(255,255,255,0.7);
+}
+
+.risk-bar {
+  position: relative;
+  height: 14px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    #ff4d4d 0%,
+    #ff914d 35%,
+    #ffd36b 55%,
+    #7dff9b 70%,
+    #27f5ff 85%,
+    #27f5ff 100%
+  );
+  box-shadow: 0 0 18px rgba(39, 245, 255, 0.25);
+}
+
+.risk-pointer {
+  position: absolute;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: white;
+  border: 3px solid #27f5ff;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 15px rgba(39, 245, 255, 0.8);
+  transition: left 0.5s ease;
+}
+
+.risk-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
+  font-size: 10px;
+  color: rgba(255,255,255,0.65);
+}
+
+.risk-text {
+  margin-top: 14px;
+  text-align: center;
+}
+
+.risk-text strong {
+  color: #27f5ff;
+  text-transform: uppercase;
+  font-size: 14px;
+}
+
+.risk-text p {
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: rgba(255,255,255,0.75);
 }
 
 .scenario-info h2 {
@@ -354,141 +478,71 @@ button:hover {
 }
 
 .ocean-visual {
-  padding: 24px;
+  padding: 30px;
+}
+
+.ocean-visual h2 {
   text-align: center;
+  margin-bottom: 30px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: #27f5ff;
 }
 
-.coral-scene {
-  height: 160px;
-  position: relative;
-  overflow: hidden;
+.impact-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 20px;
+}
+
+.impact-card {
+  padding: 20px;
   border-radius: 18px;
-  background: linear-gradient(to top, rgba(0, 8, 16, 0.8), rgba(0, 120, 160, 0.25));
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  backdrop-filter: blur(8px);
+  transition: transform 0.3s ease;
 }
 
-.coral {
-  position: absolute;
-  bottom: 0;
-  width: 28px;
-  height: 95px;
-  border-radius: 20px 20px 0 0;
-  transform-origin: bottom;
-  animation: coralWave 3s ease-in-out infinite;
-  transition: all 0.8s ease;
+.impact-card:hover {
+  transform: translateY(-5px);
 }
 
-.coral-one {
-  left: 18%;
-  background: #ff4fa3;
+.impact-card h3 {
+  margin-top: 0;
+  margin-bottom: 12px;
 }
 
-.coral-two {
-  left: 25%;
-  height: 70px;
-  background: #8dff7a;
-  animation-delay: 0.4s;
+.impact-card p {
+  line-height: 1.6;
+  color: rgba(255,255,255,0.85);
 }
 
-.coral-three {
-  right: 22%;
-  height: 85px;
-  background: #ff884d;
-  animation-delay: 0.8s;
+.danger {
+  border-color: rgba(255, 80, 80, 0.5);
+  box-shadow: 0 0 20px rgba(255,80,80,0.15);
 }
 
-@keyframes coralWave {
-  0%, 100% {
-    transform: rotate(-3deg);
-  }
-  50% {
-    transform: rotate(3deg);
-  }
+.warning {
+  border-color: rgba(255, 180, 80, 0.5);
+  box-shadow: 0 0 20px rgba(255,180,80,0.15);
 }
 
-.fish {
-  position: absolute;
-  font-size: 28px;
-  animation: swim 8s linear infinite;
-  transition: opacity 0.8s ease;
+.critical {
+  border-color: rgba(255, 0, 0, 0.7);
+  background: rgba(80,0,0,0.35);
+  box-shadow: 0 0 35px rgba(255,0,0,0.2);
 }
 
-.fish-one {
-  top: 45px;
-  left: -50px;
+.healthy-card {
+  border-color: rgba(39,245,255,0.5);
+  box-shadow: 0 0 20px rgba(39,245,255,0.15);
 }
 
-.fish-two {
-  top: 90px;
-  left: -120px;
-  animation-duration: 11s;
-}
-
-@keyframes swim {
-  from {
-    transform: translateX(0);
-  }
-  to {
-    transform: translateX(1100px);
-  }
-}
-
-.plastic {
-  position: absolute;
-  color: #d9d9d9;
-  opacity: 0;
-  font-size: 42px;
-  animation: floatPlastic 5s ease-in-out infinite;
-  transition: opacity 0.8s ease;
-}
-
-.plastic-one {
-  top: 30px;
-  right: 20%;
-}
-
-.plastic-two {
-  top: 80px;
-  left: 45%;
-  animation-delay: 1s;
-}
-
-@keyframes floatPlastic {
-  0%, 100% {
-    transform: translateY(0) rotate(0deg);
-  }
-  50% {
-    transform: translateY(-18px) rotate(12deg);
-  }
-}
-
-/* visual ecological changes */
-.ocean-page.warning .coral {
-  background: #d8d8d8;
-  height: 65px;
-  opacity: 0.75;
-}
-
-.ocean-page.critical .coral {
-  background: #6b6b6b;
-  height: 35px;
-  opacity: 0.45;
-  animation: none;
-}
-
-.ocean-page.warning .fish {
-  opacity: 0.55;
-}
-
-.ocean-page.critical .fish {
-  opacity: 0.15;
-}
-
-.ocean-page.warning .plastic {
-  opacity: 0.5;
-}
-
-.ocean-page.critical .plastic {
-  opacity: 1;
+.bottom-text {
+  text-align: center;
+  margin-top: 30px;
+  color: rgba(255,255,255,0.75);
 }
 
 /* responsive */

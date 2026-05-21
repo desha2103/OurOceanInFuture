@@ -22,8 +22,45 @@ export default function OceanFutureSimulator() {
     );
   }, [pollution, temperature, fishing]);
 
+  const riskLevels = [
+    {
+      min: 85,
+      max: 100,
+      label: "Healthy Ocean",
+      note: "Ocean systems are functioning well.",
+    },
+    {
+      min: 70,
+      max: 84,
+      label: "Mostly Stable",
+      note: "Stable, but early warning signs exist.",
+    },
+    {
+      min: 55,
+      max: 69,
+      label: "Warning Signs Increasing",
+      note: "Visible stress from pollution, warming, or fishing.",
+    },
+    {
+      min: 35,
+      max: 54,
+      label: "Human Impact Increasing",
+      note: "Marine ecosystems are under strong pressure.",
+    },
+    {
+      min: 0,
+      max: 34,
+      label: "Critical Ecosystem State",
+      note: "Severe damage and collapse risk.",
+    },
+  ];
+
+  const currentRisk = riskLevels.find(
+    (level) => health >= level.min && health <= level.max
+  );
+
   const scenario: Scenario = useMemo(() => {
-    if (health > 70) {
+    if (health >= 70) {
       return {
         status: "Healthy",
         coral: "Colorful and stable",
@@ -34,13 +71,14 @@ export default function OceanFutureSimulator() {
       };
     }
 
-    if (health > 40) {
+    if (health >= 40) {
       return {
         status: "At Risk",
         coral: "Bleaching increasing",
         fish: "Declining",
         plastic: "Significant impact",
-        outlook: "Marine ecosystems are stressed. Human action is urgently needed.",
+        outlook:
+          "Marine ecosystems are stressed. Human action is urgently needed.",
         moodClass: "warning",
       };
     }
@@ -67,7 +105,7 @@ export default function OceanFutureSimulator() {
       <div className="bubble-layer" />
 
       <section className="hero">
-        <h1>Ocean in future</h1>
+        <h1>Ocean in Future</h1>
         <p>An Ocean Future Simulator</p>
         <div className="wave-line">〰</div>
       </section>
@@ -110,24 +148,47 @@ export default function OceanFutureSimulator() {
             }}
           >
             <div className="health-inner">
-                <span  className="health-title">Overall ocean health index</span>
-                <strong>{health}%</strong>
-              
-                <em>
-                    {
-                        health >= 85
-                            ? "Healthy Ocean"
-                            : health >= 70
-                            ? "Mostly Stable"
-                            : health >= 55
-                            ? "Warning Signs Increasing"
-                            : health >= 35
-                            ? "Human Impact Increasing"
-                            : "Critical Ecosystem State"
-                    }
-                </em>
+              <span className="health-title">Overall Ocean Health Index</span>
+
+              <strong>{health}%</strong>
+
+              <em>
+                {health >= 85
+                  ? "Healthy Ocean"
+                  : health >= 70
+                  ? "Mostly Stable"
+                  : health >= 55
+                  ? "Warning Signs Increasing"
+                  : health >= 35
+                  ? "Human Impact Increasing"
+                  : "Critical Ecosystem State"}
+              </em>
             </div>
           </div>
+
+          <div className="ohi-risk-box">
+            <h3>OHI-Inspired Score Meaning</h3>
+
+            <div className="ohi-scale-list">
+                {riskLevels.map((level) => (
+                <div
+                    key={level.label}
+                    className={`ohi-scale-row ${
+                    health >= level.min && health <= level.max ? "active" : ""
+                    }`}
+                >
+                    <span className="range">
+                    {level.min}–{level.max}%
+                    </span>
+
+                    <div>
+                    <strong>{level.label}</strong>
+                    <p>{level.note}</p>
+                    </div>
+                </div>
+                ))}
+            </div>
+            </div>
         </div>
 
         <div className="scenario-info">
@@ -143,66 +204,67 @@ export default function OceanFutureSimulator() {
       </section>
 
       <section className="ocean-visual glass">
-  <h2>How This Impacts Human Life</h2>
+        <h2>How This Impacts Human Life</h2>
 
-  <div className="impact-grid">
+        <div className="impact-grid">
+          {pollution > 70 && (
+            <div className="impact-card danger">
+              <h3>Plastic Pollution Crisis</h3>
+              <p>
+                Large amounts of plastic enter the food chain through fish and
+                sea salt. Humans may consume microplastics daily through food
+                and water.
+              </p>
+            </div>
+          )}
 
-    {pollution > 70 && (
-      <div className="impact-card danger">
-        <h3>Plastic Pollution Crisis</h3>
-        <p>
-          Large amounts of plastic enter the food chain through fish and sea salt.
-          Humans may consume microplastics daily through food and water.
+          {temperature > 60 && (
+            <div className="impact-card warning">
+              <h3>Ocean Temperature Rising</h3>
+              <p>
+                Warmer oceans increase storms, floods, coral death and damage
+                marine ecosystems that millions of people depend on.
+              </p>
+            </div>
+          )}
+
+          {fishing > 50 && (
+            <div className="impact-card danger">
+              <h3>Overfishing</h3>
+              <p>
+                Fish populations may collapse, causing food shortages, economic
+                loss and rising seafood prices around the world.
+              </p>
+            </div>
+          )}
+
+          {health < 40 && (
+            <div className="impact-card critical">
+              <h3>Human Future At Risk</h3>
+              <p>
+                A damaged ocean affects climate stability, oxygen production,
+                biodiversity and global food systems. Human life becomes more
+                unstable.
+              </p>
+            </div>
+          )}
+
+          {health > 70 && (
+            <div className="impact-card healthy-card">
+              <h3>Hopeful Future</h3>
+              <p>
+                Sustainable actions can still protect marine ecosystems and
+                maintain a healthier future for both nature and humanity.
+              </p>
+            </div>
+          )}
+        </div>
+
+        <p className="bottom-text">
+          Small changes today, big impact tomorrow. The ocean&apos;s future is in
+          our hands.
         </p>
-      </div>
-    )}
-
-    {temperature > 60 && (
-      <div className="impact-card warning">
-        <h3>Ocean Temperature Rising</h3>
-        <p>
-          Warmer oceans increase storms, floods, coral death and damage marine
-          ecosystems that millions of people depend on.
-        </p>
-      </div>
-    )}
-
-    {fishing > 50 && (
-      <div className="impact-card danger">
-        <h3>Overfishing</h3>
-        <p>
-          Fish populations may collapse, causing food shortages, economic loss
-          and rising seafood prices around the world.
-        </p>
-      </div>
-    )}
-
-    {health < 40 && (
-      <div className="impact-card critical">
-        <h3>Human Future At Risk</h3>
-        <p>
-          A damaged ocean affects climate stability, oxygen production,
-          biodiversity and global food systems. Human life becomes more unstable.
-        </p>
-      </div>
-    )}
-
-    {health > 70 && (
-      <div className="impact-card healthy-card">
-        <h3>Hopeful Future</h3>
-        <p>
-          Sustainable actions can still protect marine ecosystems and maintain a
-          healthier future for both nature and humanity.
-        </p>
-      </div>
-    )}
-
-  </div>
-
-  <p className="bottom-text">
-    Small changes today, big impact tomorrow. The ocean&apos;s future is in our hands.
-  </p>
-</section>
+      </section>
     </main>
   );
 }
@@ -215,7 +277,13 @@ type SliderProps = {
   onChange: (value: number) => void;
 };
 
-function OceanSlider({ icon, title, description, value, onChange }: SliderProps) {
+function OceanSlider({
+  icon,
+  title,
+  description,
+  value,
+  onChange,
+}: SliderProps) {
   const level = value > 70 ? "High" : value > 35 ? "Medium" : "Low";
 
   return (
