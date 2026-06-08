@@ -11,9 +11,9 @@ type Scenario = {
 };
 
 export default function OceanFutureSimulator() {
-  const [pollution, setPollution] = useState<number>(40);
-  const [temperature, setTemperature] = useState<number>(30);
-  const [fishing, setFishing] = useState<number>(35);
+  const [pollution, setPollution] = useState<number>(15);
+  const [temperature, setTemperature] = useState<number>(10);
+  const [fishing, setFishing] = useState<number>(12);
 
   const health = useMemo(() => {
     return Math.max(
@@ -44,7 +44,7 @@ export default function OceanFutureSimulator() {
     {
       min: 35,
       max: 54,
-      label: "Human Impact Increasing",
+      label: "Human activities are putting the ocean at risk.",
       note: "Marine ecosystems are under strong pressure.",
     },
     {
@@ -88,7 +88,7 @@ export default function OceanFutureSimulator() {
       coral: "Bleaching increasing",
       fish: "Population decreasing",
       plastic: "Significant impact",
-      outlook: "Marine life is decreasing as pressure grows.",
+      outlook: "Many marine species are struggling to survive.",
       moodClass: "warning-low",
     };
   }
@@ -105,10 +105,10 @@ export default function OceanFutureSimulator() {
 }, [health]);
 
   function resetScenario() {
-    setPollution(40);
-    setTemperature(30);
-    setFishing(35);
-  }
+  setPollution(15);
+  setTemperature(10);
+  setFishing(12);
+}
 
   return (
     <main className={`ocean-page ${scenario.moodClass}`}>
@@ -171,7 +171,7 @@ export default function OceanFutureSimulator() {
               : health >= 55
               ? "Warning Signs Increasing"
               : health >= 35
-              ? "Human Impact Increasing"
+              ? "Human activities are putting the ocean at risk."
               : "Critical Ecosystem State"}
           </em>
         </div>
@@ -197,7 +197,7 @@ export default function OceanFutureSimulator() {
           : health >= 70
           ? "Life is still active, but protection is needed."
           : health >= 40
-          ? "Marine life is decreasing as pressure grows."
+          ? "Many marine species are struggling to survive."
           : "The ecosystem is close to collapse."}
       </p>
     </div>
@@ -283,6 +283,18 @@ export default function OceanFutureSimulator() {
                 A damaged ocean affects climate stability, oxygen production,
                 biodiversity and global food systems. Human life becomes more
                 unstable.
+              </p>
+            </div>
+          )}
+
+          {health >= 55 && health < 70 && (
+            <div className="impact-card warning">
+              <h3>Warning Signs Increasing</h3>
+              <p>
+                The ocean is still functioning, but warning signs are becoming more
+                visible. Coral reefs are under stress, fish populations are declining,
+                and environmental pressures are increasing. Immediate action can still
+                prevent more serious damage.
               </p>
             </div>
           )}
