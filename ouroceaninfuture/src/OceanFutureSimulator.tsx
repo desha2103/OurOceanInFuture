@@ -1,6 +1,14 @@
 import { useMemo, useState } from "react";
 import "./OceanFutureSimulator.css";
 
+import fish1 from "./assets/fish1.png";
+import fish2 from "./assets/fish2.png";
+import healthyCoral from "./assets/healthy-coral.png";
+import deadCoral from "./assets/dead-coral.png";
+import plasticBottle from "./assets/plastic-bottle1.png";
+import fishingNet from "./assets/fishing-net.png";
+import deadFish from "./assets/dead-fish.png";
+
 type Scenario = {
   status: string;
   coral: string;
@@ -178,29 +186,38 @@ export default function OceanFutureSimulator() {
       </div>
     </div>
 
-    <div className="mini-ocean-animation">
-      <div className="sun-ray"></div>
-      <div className="animated-fish fish-a">🐟</div>
-      <div className="animated-fish fish-b">🐠</div>
-      <div className="animated-fish fish-c">🐡</div>
+<div className="mini-ocean-animation">
+  <div className="sun-ray"></div>
+  <div className="sea-floor"></div>
 
-      <div className="animated-plastic plastic-a">▯</div>
-      <div className="animated-plastic plastic-b">○</div>
+  <img className="real-coral coral-left" src={healthyCoral} alt="Healthy coral" />
+  <img className="real-coral coral-right" src={healthyCoral} alt="Healthy coral" />
 
-      <div className="animated-coral coral-a"></div>
-      <div className="animated-coral coral-b"></div>
-      <div className="animated-coral coral-c"></div>
+  <img className="dead-coral coral-dead-left" src={deadCoral} alt="Dead coral" />
+  <img className="dead-coral coral-dead-right" src={deadCoral} alt="Dead coral" />
 
-      <p>
-        {health >= 85
-          ? "The ocean is healthy and vibrant."
-          : health >= 70
-          ? "Life is still active, but protection is needed."
-          : health >= 40
-          ? "Many marine species are struggling to survive."
-          : "The ecosystem is close to collapse."}
-      </p>
-    </div>
+  <img className="real-fish fish-one" src={fish1} alt="Fish" />
+  <img className="real-fish fish-two" src={fish2} alt="Fish" />
+  <img className="real-fish fish-three" src={fish1} alt="Fish" />
+
+  <img className="real-dead-fish dead-one" src={deadFish} alt="Dead fish" />
+  <img className="real-dead-fish dead-two" src={deadFish} alt="Dead fish" />
+
+  <img className="plastic-img plastic-one" src={plasticBottle} alt="Plastic bottle" />
+  <img className="plastic-img plastic-two" src={plasticBottle} alt="Plastic bottle" />
+
+  <img className="net-img" src={fishingNet} alt="Fishing net" />
+
+  <p className="animation-message">
+    {health >= 85
+      ? "The ocean is healthy and vibrant."
+      : health >= 70
+      ? "Life is still active, but protection is needed."
+      : health >= 40
+      ? "Coral and fish are struggling to survive."
+      : "The ecosystem is close to collapse."}
+  </p>
+</div>
   </div>
 
   <div className="result-bottom">
@@ -276,17 +293,32 @@ export default function OceanFutureSimulator() {
             </div>
           )}
 
-          {health < 40 && (
+          {/* 0-34 */}
+          {health < 35 && (
             <div className="impact-card critical">
-              <h3>Human Future At Risk</h3>
+              <h3>Critical Ecosystem State</h3>
               <p>
-                A damaged ocean affects climate stability, oxygen production,
-                biodiversity and global food systems. Human life becomes more
-                unstable.
+                The ocean is approaching ecological collapse. Large areas of coral
+                reefs are dying, fish populations are severely reduced, and the
+                ocean's ability to support life is at risk.
               </p>
             </div>
           )}
 
+          {/* 35-54 */}
+          {health >= 35 && health < 55 && (
+            <div className="impact-card danger">
+              <h3>Human Impact Increasing</h3>
+              <p>
+                Many marine species are struggling to survive. Coral reefs are dying,
+                fish populations are shrinking, and pollution is becoming a major
+                threat. These changes may affect food security, coastal communities,
+                and climate stability around the world.
+              </p>
+            </div>
+          )}
+
+          {/* 55-70 */}
           {health >= 55 && health < 70 && (
             <div className="impact-card warning">
               <h3>Warning Signs Increasing</h3>
@@ -299,7 +331,8 @@ export default function OceanFutureSimulator() {
             </div>
           )}
 
-          {health > 70 && (
+          {/* 70+ */}
+          {health >= 70 && (
             <div className="impact-card healthy-card">
               <h3>Hopeful Future</h3>
               <p>
