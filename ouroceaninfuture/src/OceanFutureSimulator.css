@@ -1,18 +1,68 @@
-*{box-sizing:border-box;}
-body{margin:0;font-family:Arial,Helvetica,sans-serif;background:#00111f;}
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  width: 100%;
+  min-height: 100%;
+  font-family: Arial, Helvetica, sans-serif;
+  background: #00111f;
+
+  overflow-x: hidden;
+  overflow-y: auto;
+
+  scrollbar-width: none;        /* Firefox */
+  -ms-overflow-style: none;     /* old Edge */
+}
+
+/* Hide scrollbar everywhere: Chrome, Edge, Safari */
+html::-webkit-scrollbar,
+body::-webkit-scrollbar,
+#root::-webkit-scrollbar,
+.ocean-page::-webkit-scrollbar,
+*::-webkit-scrollbar {
+  width: 0 !important;
+  height: 0 !important;
+  display: none !important;
+}
+
 
 /* ══ PAGE ══════════════════════════════════════════════ */
-.ocean-page{
-  min-height:100vh; padding:40px 16px;
-  color:white; position:relative; overflow-x:hidden;
-  background:linear-gradient(rgba(0,16,30,0.3),rgba(0,4,12,0.85)),
-    url("/ocean-bg.jpg") center/cover fixed;
-  transition:filter 0.9s ease;
+/* ══ PAGE ══════════════════════════════════════════════ */
+.ocean-page {
+  min-height: 100vh;
+  padding: 40px 16px;
+  color: white;
+  position: relative;
+
+  overflow-x: hidden;
+  overflow-y: visible;
+
+  background:
+    linear-gradient(rgba(0,16,30,0.3), rgba(0,4,12,0.85)),
+    url("/ocean-bg.jpg") center / cover fixed;
+
+  transition: filter 0.9s ease;
 }
-.ocean-page.healthy    {filter:saturate(1.2) brightness(1.05);}
-.ocean-page.warning    {filter:saturate(0.9) brightness(0.97);}
-.ocean-page.warning-low{filter:saturate(0.6) brightness(0.78);}
-.ocean-page.critical   {filter:grayscale(0.5) saturate(0.4) brightness(0.6);}
+
+.ocean-page.healthy {
+  filter: saturate(1.2) brightness(1.05);
+}
+
+.ocean-page.warning {
+  filter: saturate(0.9) brightness(0.97);
+}
+
+.ocean-page.warning-low {
+  filter: saturate(0.6) brightness(0.78);
+}
+
+.ocean-page.critical {
+  filter: grayscale(0.5) saturate(0.4) brightness(0.6);
+}
 
 .water-overlay{position:absolute;inset:0;z-index:0;pointer-events:none;}
 
@@ -311,6 +361,39 @@ input[type="range"]{
   border-radius: 0;
 }
 
+/* Same shadow card background for result panel columns */
+.ohi-risk-box,
+.lifecycle-panel,
+.scenario-info {
+  padding: 16px;
+  border-radius: 16px;
+  background: rgba(0, 18, 32, 0.72);
+  border: 1px solid rgba(39, 245, 255, 0.32);
+  box-shadow:
+    0 0 28px rgba(0, 0, 0, 0.35),
+    0 0 22px rgba(39, 245, 255, 0.08),
+    inset 0 0 28px rgba(39, 245, 255, 0.04);
+}
+
+/* Keep the 3 cards visually balanced */
+.lifecycle-panel,
+.scenario-info {
+  min-height: 100%;
+}
+
+/* Remove last underline inside Future Ocean Scenario */
+.scenario-info .info-row:last-child {
+  border-bottom: none;
+}
+
+/* Final anti-shake fix */
+body {
+  padding-right: 0 !important;
+}
+
+.ocean-page {
+  max-width: 100%;
+}
 /* ══ RESPONSIVE ═════════════════════════════════════════ */
 @media(max-width:900px){
   .main-layout{grid-template-columns:1fr;}
