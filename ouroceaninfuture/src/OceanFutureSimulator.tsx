@@ -1,773 +1,1780 @@
-import { useMemo, useState, useEffect, useRef, useCallback } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./OceanFutureSimulator.css";
 
-import fish1Src        from "./assets/fish1.png";
-import fish2Src        from "./assets/fish2.png";
-import deadFishSrc     from "./assets/dead-fish.png";
-import healthyCoralSrc from "./assets/healthy-coral.png";
-import deadCoralSrc    from "./assets/dead-coral.png";
-import plasticSrc      from "./assets/plastic-bottle1.png";
-import netSrc          from "./assets/fishing-net.png";
-import turtleSrc       from "./assets/turtle.png";
-import whaleSrc        from "./assets/whale.png";
-import sharkSrc        from "./assets/shark.png";
+import deadFishSrc from "./assets/dead-fish.png";
+import fish1Src from "./assets/fish1.png";
+import fish2Src from "./assets/fish2.png";
+import netSrc from "./assets/fishing-net.png";
+import plasticSrc from "./assets/plastic-bottle1.png";
+import sharkSrc from "./assets/shark.png";
 
-function rand(a: number, b: number) { return a + Math.random() * (b - a); }
-function randInt(a: number, b: number) { return Math.floor(rand(a, b)); }
-function loadImg(src: string) { const i = new Image(); i.src = src; return i; }
+import lopheliaSrc from "./assets/lophelia-reef.png";
+import coralGardenSrc from "./assets/coral-garden.png";
+import seepFieldSrc from "./assets/seep-field.png";
+import spongeGroundSrc from "./assets/sponge-ground.png";
 
-type Fish    = { id:number; x:number; y:number; spd:number; sz:number; dir:number; wb:number; type:0|1; flee:number; depth:number };
-type Bubble  = { id:number; x:number; y:number; sz:number; spd:number; wb:number; alpha:number };
-type Plastic = { id:number; x:number; y:number; vx:number; vy:number; rot:number; sc:number; wobble:number };
-type Coral   = { id:number; x:number; y:number; color:string; sz:number; grown:number };
-type Jelly   = { id:number; x:number; y:number; phase:number; sz:number; col:string; vx:number };
-type Special = { type:"turtle"|"whale"|"shark"; x:number; y:number; spd:number; dir:number; sz:number; wb:number; depth:number };
-type Particle= { x:number; y:number; vx:number; vy:number; life:number; col:string; sz:number };
+function rand(a: number, b: number) {
+  return a + Math.random() * (b - a);
+}
 
-const CORAL_COLS = ["#FF6450","#FF9050","#FF50B4","#50C8FF","#FFDC50","#50FFB4","#C850FF","#50FF80"];
-const JELLY_COLS = ["#C850FF","#50B4FF","#FF78B4","#78D4FF","#A0FF78","#FFD450"];
+function randInt(a: number, b: number) {
+  return Math.floor(rand(a, b));
+}
 
-// ════════════════════════════════════════════════════════
-//  CANVAS
-// ════════════════════════════════════════════════════════
-function OceanCanvas({ health, pollution, fishing, temperature }: {
-  health:number; pollution:number; fishing:number; temperature:number;
-}) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const S = useRef({
-    fish:[]as Fish[], bubbles:[]as Bubble[], plastics:[]as Plastic[],
-    corals:[]as Coral[], jellies:[]as Jelly[], specials:[]as Special[],
-    particles:[]as Particle[],
-    drawn:[]as Coral[], colorIdx:0,
-    net:{ x:-400, active:false, spd:2.5, cooldown:0 },
-    tick:0, mx:-999, my:-999,
-    health:87, pollution:15, fishing:12, temperature:10,
-    rafId:0, imgs:{} as Record<string,HTMLImageElement>,
+function loadImg(src: string) {
+  const image = new Image();
+  image.src = src;
+  return image;
+}
+
+type PreparedHabitat = {
+  canvas: HTMLCanvasElement;
+  aspectRatio: number;
+};
+
+/**
+ * Loads a habitat PNG, removes any baked-in white/grey checkerboard that is
+ * connected to the image border, crops the empty space and returns a canvas
+ * with a genuine transparent background.
+ *
+ * This also works when the source PNG already has real transparency.
+ */
+async function prepareHabitatAsset(
+  src: string,
+  maxDimension = 900,
+): Promise<PreparedHabitat> {
+  const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const loadedImage = new Image();
+    loadedImage.onload = () => resolve(loadedImage);
+    loadedImage.onerror = () =>
+      reject(new Error(`Could not load habitat image: ${src}`));
+    loadedImage.src = src;
   });
 
-  useEffect(()=>{
-    const s=S.current;
-    s.imgs={
-      fish1:loadImg(fish1Src), fish2:loadImg(fish2Src),
-      dead:loadImg(deadFishSrc),
-      hcoral:loadImg(healthyCoralSrc), dcoral:loadImg(deadCoralSrc),
-      plastic:loadImg(plasticSrc), net:loadImg(netSrc),
-      turtle:loadImg(turtleSrc), whale:loadImg(whaleSrc), shark:loadImg(sharkSrc),
+  const scale = Math.min(
+    1,
+    maxDimension / Math.max(image.naturalWidth, image.naturalHeight),
+  );
+  const width = Math.max(1, Math.round(image.naturalWidth * scale));
+  const height = Math.max(1, Math.round(image.naturalHeight * scale));
+
+  const workCanvas = document.createElement("canvas");
+  workCanvas.width = width;
+  workCanvas.height = height;
+
+  const workContext = workCanvas.getContext("2d", {
+    willReadFrequently: true,
+  });
+  if (!workContext) {
+    return { canvas: workCanvas, aspectRatio: width / height };
+  }
+
+  workContext.drawImage(image, 0, 0, width, height);
+  const imageData = workContext.getImageData(0, 0, width, height);
+  const pixels = imageData.data;
+  const pixelCount = width * height;
+
+  // Find the most common bright neutral colours on the outside border.
+  // Those are normally the two colours of a baked checkerboard.
+  const borderColours = new Map<string, number>();
+  const sampleBorderPixel = (x: number, y: number) => {
+    const offset = (y * width + x) * 4;
+    const red = pixels[offset];
+    const green = pixels[offset + 1];
+    const blue = pixels[offset + 2];
+    const alpha = pixels[offset + 3];
+
+    if (alpha < 32) return;
+
+    const maximum = Math.max(red, green, blue);
+    const minimum = Math.min(red, green, blue);
+    const brightness = (red + green + blue) / 3;
+
+    if (brightness > 205 && maximum - minimum < 24) {
+      const key = `${Math.round(red / 8) * 8},${Math.round(green / 8) * 8},${
+        Math.round(blue / 8) * 8
+      }`;
+      borderColours.set(key, (borderColours.get(key) ?? 0) + 1);
+    }
+  };
+
+  for (let x = 0; x < width; x += 1) {
+    sampleBorderPixel(x, 0);
+    sampleBorderPixel(x, height - 1);
+  }
+  for (let y = 0; y < height; y += 1) {
+    sampleBorderPixel(0, y);
+    sampleBorderPixel(width - 1, y);
+  }
+
+  const checkerPalette = [...borderColours.entries()]
+    .sort((first, second) => second[1] - first[1])
+    .slice(0, 4)
+    .map(([key]) => key.split(",").map(Number));
+
+  const isBackgroundCandidate = (pixelIndex: number) => {
+    const offset = pixelIndex * 4;
+    const red = pixels[offset];
+    const green = pixels[offset + 1];
+    const blue = pixels[offset + 2];
+    const alpha = pixels[offset + 3];
+
+    if (alpha < 32) return true;
+    if (checkerPalette.length === 0) return false;
+
+    const maximum = Math.max(red, green, blue);
+    const minimum = Math.min(red, green, blue);
+    if (maximum - minimum > 26) return false;
+
+    return checkerPalette.some(([paletteRed, paletteGreen, paletteBlue]) => {
+      const distance =
+        Math.abs(red - paletteRed) +
+        Math.abs(green - paletteGreen) +
+        Math.abs(blue - paletteBlue);
+      return distance < 31;
+    });
+  };
+
+  // Flood-fill only from the outside. This removes the surrounding
+  // checkerboard but keeps pale corals and sponges inside the subject.
+  const visited = new Uint8Array(pixelCount);
+  const queue = new Int32Array(pixelCount);
+  let queueStart = 0;
+  let queueEnd = 0;
+
+  const enqueue = (pixelIndex: number) => {
+    if (
+      pixelIndex < 0 ||
+      pixelIndex >= pixelCount ||
+      visited[pixelIndex] === 1 ||
+      !isBackgroundCandidate(pixelIndex)
+    ) {
+      return;
+    }
+
+    visited[pixelIndex] = 1;
+    queue[queueEnd] = pixelIndex;
+    queueEnd += 1;
+  };
+
+  for (let x = 0; x < width; x += 1) {
+    enqueue(x);
+    enqueue((height - 1) * width + x);
+  }
+  for (let y = 0; y < height; y += 1) {
+    enqueue(y * width);
+    enqueue(y * width + width - 1);
+  }
+
+  while (queueStart < queueEnd) {
+    const current = queue[queueStart];
+    queueStart += 1;
+
+    const x = current % width;
+    const y = Math.floor(current / width);
+
+    if (x > 0) enqueue(current - 1);
+    if (x < width - 1) enqueue(current + 1);
+    if (y > 0) enqueue(current - width);
+    if (y < height - 1) enqueue(current + width);
+  }
+
+  for (let index = 0; index < pixelCount; index += 1) {
+    if (visited[index] === 1) {
+      pixels[index * 4 + 3] = 0;
+    }
+  }
+
+  workContext.putImageData(imageData, 0, 0);
+
+  // Crop the now-transparent border so each habitat can sit naturally
+  // on the shared seabed instead of looking like a rectangular poster.
+  let minX = width;
+  let minY = height;
+  let maxX = -1;
+  let maxY = -1;
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      if (pixels[(y * width + x) * 4 + 3] > 10) {
+        minX = Math.min(minX, x);
+        minY = Math.min(minY, y);
+        maxX = Math.max(maxX, x);
+        maxY = Math.max(maxY, y);
+      }
+    }
+  }
+
+  if (maxX < minX || maxY < minY) {
+    return { canvas: workCanvas, aspectRatio: width / height };
+  }
+
+  const padding = 8;
+  minX = Math.max(0, minX - padding);
+  minY = Math.max(0, minY - padding);
+  maxX = Math.min(width - 1, maxX + padding);
+  maxY = Math.min(height - 1, maxY + padding);
+
+  const croppedWidth = maxX - minX + 1;
+  const croppedHeight = maxY - minY + 1;
+  const croppedCanvas = document.createElement("canvas");
+  croppedCanvas.width = croppedWidth;
+  croppedCanvas.height = croppedHeight;
+
+  const croppedContext = croppedCanvas.getContext("2d");
+  croppedContext?.drawImage(
+    workCanvas,
+    minX,
+    minY,
+    croppedWidth,
+    croppedHeight,
+    0,
+    0,
+    croppedWidth,
+    croppedHeight,
+  );
+
+  return {
+    canvas: croppedCanvas,
+    aspectRatio: croppedWidth / croppedHeight,
+  };
+}
+
+type Fish = {
+  id: number;
+  x: number;
+  y: number;
+  speed: number;
+  size: number;
+  direction: 1 | -1;
+  wobble: number;
+  type: 0 | 1;
+  flee: number;
+  depth: number;
+};
+
+type Bubble = {
+  id: number;
+  x: number;
+  y: number;
+  size: number;
+  speed: number;
+  wobble: number;
+  alpha: number;
+};
+
+type MarineLitter = {
+  id: number;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  rotation: number;
+  scale: number;
+  wobble: number;
+};
+
+
+type Sediment = {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  life: number;
+  size: number;
+};
+
+
+type OceanCanvasProps = {
+  health: number;
+  marineLitter: number;
+  temperature: number;
+  acidification: number;
+  bottomTrawling: number;
+};
+
+
+function OceanCanvas({
+  health,
+  marineLitter,
+  temperature,
+  acidification,
+  bottomTrawling,
+}: OceanCanvasProps) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  const state = useRef({
+    fish: [] as Fish[],
+    bubbles: [] as Bubble[],
+    litter: [] as MarineLitter[],
+    sediment: [] as Sediment[],
+    trawl: { x: -360, active: false, speed: 3, cooldown: 0 },
+    shark: { x: -220, y: 260, direction: 1 as 1 | -1, wobble: 0 },
+    tick: 0,
+    mouseX: -999,
+    mouseY: -999,
+    health: 87,
+    marineLitter: 15,
+    temperature: 10,
+    acidification: 10,
+    bottomTrawling: 12,
+    rafId: 0,
+    images: {} as Record<string, HTMLImageElement>,
+    habitats: {} as Record<string, PreparedHabitat>,
+    habitatsReady: false,
+    habitatLoadError: false,
+  });
+
+  useEffect(() => {
+    const s = state.current;
+
+    s.images = {
+      fish1: loadImg(fish1Src),
+      fish2: loadImg(fish2Src),
+      deadFish: loadImg(deadFishSrc),
+      plastic: loadImg(plasticSrc),
+      net: loadImg(netSrc),
+      shark: loadImg(sharkSrc),
+      lophelia: loadImg(lopheliaSrc),
+      coralGarden: loadImg(coralGardenSrc),
+      seepField: loadImg(seepFieldSrc),
+      spongeGround: loadImg(spongeGroundSrc),
     };
 
-    // fish — dir decides image: dir=1 → fish1 faces RIGHT, dir=-1 → fish2 faces LEFT naturally
-    s.fish = Array.from({length:22},(_,i)=>({
-  id:i, x:rand(-300,1600), y:rand(55,520),
-      spd:rand(0.7,2.0), sz:randInt(38,68),
-      dir: i%2===0 ? 1 : -1,   // alternating directions
-      wb:rand(0,Math.PI*2),
-      type:(i%2===0?0:1) as 0|1,  // type0=fish1 (faces right), type1=fish2 (faces left)
-      flee:0, depth:rand(0.6,1.0),
+    s.fish = Array.from({ length: 26 }, (_, index) => ({
+      id: index,
+      x: rand(-300, 1650),
+      y: rand(80, 500),
+      speed: rand(0.55, 1.8),
+      size: randInt(34, 66),
+      direction: index % 2 === 0 ? 1 : -1,
+      wobble: rand(0, Math.PI * 2),
+      type: (index % 2 === 0 ? 0 : 1) as 0 | 1,
+      flee: 0,
+      depth: rand(0.55, 1),
     }));
 
-    s.bubbles = Array.from({length:55},(_,i)=>({
-  id:i, x:rand(0,1600), y:rand(40,600),
-      sz:rand(3,11), spd:rand(0.3,1.0),
-      wb:rand(0,Math.PI*2), alpha:rand(0.25,0.65),
+    s.bubbles = Array.from({ length: 65 }, (_, index) => ({
+      id: index,
+      x: rand(0, 1600),
+      y: rand(30, 610),
+      size: rand(2, 9),
+      speed: rand(0.25, 0.8),
+      wobble: rand(0, Math.PI * 2),
+      alpha: rand(0.2, 0.58),
     }));
 
-    s.plastics = Array.from({length:90},(_,i)=>({
-  id:i, x:rand(0,1600), y:rand(45,550),
-      vx:rand(-0.25,0.25), vy:rand(-0.12,0.12),
-      rot:rand(0,360), sc:rand(0.35,0.9), wobble:rand(0,Math.PI*2),
+    s.litter = Array.from({ length: 90 }, (_, index) => ({
+      id: index,
+      x: rand(0, 1600),
+      y: rand(70, 560),
+      vx: rand(-0.22, 0.22),
+      vy: rand(-0.08, 0.12),
+      rotation: rand(0, 360),
+      scale: rand(0.32, 0.85),
+      wobble: rand(0, Math.PI * 2),
     }));
 
-    s.jellies = Array.from({length:8},(_,i)=>({
-  id:i, x:rand(100,1500), y:rand(60,420),
-      phase:rand(0,Math.PI*2), sz:randInt(24,44),
-      col:JELLY_COLS[i%JELLY_COLS.length],
-      vx:rand(-0.3,0.3),
-    }));
+  }, []);
 
-    s.specials=[
-      {type:"whale",  x:-250, y:rand(160,300), spd:rand(0.35,0.6), dir:1,  sz:180, wb:0, depth:0.7},
-      {type:"turtle", x:rand(100,1400), y:rand(180,400), spd:rand(0.35,0.65),dir:1,sz:100,wb:0,depth:0.75},
-      {type:"shark",  x:rand(100,1400), y:rand(180,380), spd:rand(1.1,1.8), dir:-1, sz:130, wb:0, depth:0.8},
-      {type:"turtle", x:rand(100,1400), y:rand(300,480), spd:rand(0.3,0.55),dir:-1,sz:85, wb:0, depth:0.65},
-    ];
+  useEffect(() => {
+    let cancelled = false;
 
-    // bottom coral positions
-    s.corals = Array.from({length:14},(_,i)=>({
-      id:i, x:(i/(14-1))*1580+10, y:0,
-      color:CORAL_COLS[i%CORAL_COLS.length],
-      sz:50+randInt(0,30), grown:0,
-    }));
-  },[]);
+    const habitatSources: Record<string, string> = {
+      lophelia: lopheliaSrc,
+      coralGarden: coralGardenSrc,
+      seepField: seepFieldSrc,
+      spongeGround: spongeGroundSrc,
+    };
 
-  useEffect(()=>{
-    const s=S.current;
-    s.health=health; s.pollution=pollution;
-    s.fishing=fishing; s.temperature=temperature;
-  },[health,pollution,fishing,temperature]);
+    async function loadHabitats() {
+      const results = await Promise.all(
+        Object.entries(habitatSources).map(async ([key, source]) => {
+          try {
+            const prepared = await prepareHabitatAsset(source);
+            return [key, prepared] as const;
+          } catch (error) {
+            console.error(`Failed to prepare habitat image "${key}".`, error);
+            return null;
+          }
+        }),
+      );
 
-  const onMove = useCallback((e:React.MouseEvent<HTMLCanvasElement>)=>{
-    const r=canvasRef.current?.getBoundingClientRect();
-    if(!r) return;
-    S.current.mx=e.clientX-r.left; S.current.my=e.clientY-r.top;
-  },[]);
-  const onLeave = useCallback(()=>{ S.current.mx=-999; S.current.my=-999; },[]);
-  const onClick = useCallback((e:React.MouseEvent<HTMLCanvasElement>)=>{
-    const r=canvasRef.current?.getBoundingClientRect();
-    if(!r) return;
-    const x=e.clientX-r.left, y=e.clientY-r.top;
-    const s=S.current;
-    if(y<120) return;
-    // spawn particles for visual feedback
-    for(let i=0;i<12;i++){
-      s.particles.push({x,y,vx:rand(-2,2),vy:rand(-3,-0.5),life:60,col:CORAL_COLS[s.colorIdx%CORAL_COLS.length],sz:rand(3,7)});
+      if (cancelled) return;
+
+      const loadedHabitats: Record<string, PreparedHabitat> = {};
+      results.forEach((result) => {
+        if (result) {
+          loadedHabitats[result[0]] = result[1];
+        }
+      });
+
+      state.current.habitats = loadedHabitats;
+      state.current.habitatsReady = Object.keys(loadedHabitats).length > 0;
+      state.current.habitatLoadError =
+        Object.keys(loadedHabitats).length === 0;
     }
-    s.drawn.push({id:Date.now(),x,y,color:CORAL_COLS[s.colorIdx%CORAL_COLS.length],sz:randInt(28,50),grown:0});
-    s.colorIdx++;
-  },[]);
 
-  useEffect(()=>{
-    const canvas=canvasRef.current;
-    if(!canvas) return;
-    const ctx=canvas.getContext("2d")!;
+    void loadHabitats();
 
-    function lerp(a:number[],b:number[],t:number){ return a.map((v,i)=>Math.round(v+(b[i]-v)*t)); }
-    function rgb(c:number[]){ return `rgb(${c[0]},${c[1]},${c[2]})`; }
-    function rgba(c:number[],a:number){ return `rgba(${c[0]},${c[1]},${c[2]},${a})`; }
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
-    function drawFrame(){
-      const s=S.current;
-      s.tick++;
-      const tk=s.tick;
-      const W=canvas.width, H=canvas.height;
-      const h=s.health;
+  useEffect(() => {
+    const s = state.current;
+    s.health = health;
+    s.marineLitter = marineLitter;
+    s.temperature = temperature;
+    s.acidification = acidification;
+    s.bottomTrawling = bottomTrawling;
+  }, [health, marineLitter, temperature, acidification, bottomTrawling]);
 
-      // ── SKY ──────────────────────────────────────
-      const skyH=12;
-      const skyG=ctx.createLinearGradient(0,0,0,skyH);
-      if(h>=70){skyG.addColorStop(0,"#04101E");skyG.addColorStop(1,"#0A3060");}
-      else if(h>=40){skyG.addColorStop(0,"#141420");skyG.addColorStop(1,"#303828");}
-      else{skyG.addColorStop(0,"#0A0608");skyG.addColorStop(1,"#281410");}
-      ctx.fillStyle=skyG; ctx.fillRect(0,0,W,skyH);
+  const onMouseMove = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
 
-      // sun
-      if(h>40){
-        const sg=ctx.createRadialGradient(W/2,8,0,W/2,8,220);
-        sg.addColorStop(0,`rgba(255,245,160,${h/350})`);
-        sg.addColorStop(1,"transparent");
-        ctx.fillStyle=sg; ctx.fillRect(0,0,W,skyH);
+    const scaleX = canvasRef.current!.width / rect.width;
+    const scaleY = canvasRef.current!.height / rect.height;
+
+    state.current.mouseX = (event.clientX - rect.left) * scaleX;
+    state.current.mouseY = (event.clientY - rect.top) * scaleY;
+  }, []);
+
+  const onMouseLeave = useCallback(() => {
+    state.current.mouseX = -999;
+    state.current.mouseY = -999;
+  }, []);
+
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const context = canvas.getContext("2d");
+    if (!context) return;
+
+    function lerpColor(from: number[], to: number[], amount: number) {
+      return from.map((value, index) =>
+        Math.round(value + (to[index] - value) * amount),
+      );
+    }
+
+    function colorToRgb(color: number[]) {
+      return `rgb(${color[0]}, ${color[1]}, ${color[2]})`;
+    }
+
+    function drawDeepSeaFloor(ctx: CanvasRenderingContext2D, width: number, height: number) {
+      const floorGradient = ctx.createLinearGradient(0, height - 70, 0, height);
+      floorGradient.addColorStop(0, "#211a13");
+      floorGradient.addColorStop(1, "#080807");
+      ctx.fillStyle = floorGradient;
+
+      ctx.beginPath();
+      ctx.moveTo(0, height - 48);
+      for (let x = 0; x <= width; x += 35) {
+        const y = height - 45 + Math.sin(x * 0.018) * 6 + Math.sin(x * 0.006) * 8;
+        ctx.lineTo(x, y);
       }
+      ctx.lineTo(width, height);
+      ctx.lineTo(0, height);
+      ctx.closePath();
+      ctx.fill();
+    }
 
-      // ── WATER ────────────────────────────────────
-      const wT=h>=70?[14,90,170]: h>=40?[35,72,80]: [30,22,18];
-      const wB=h>=70?[3,18,55]:  h>=40?[12,30,36]: [6,6,6];
-      // temperature tint
-      const tintStr=Math.max(0,(s.temperature-40)/100);
-      const wTa=lerp(wT,[180,60,20],tintStr);
-      const wBa=lerp(wB,[90,20,8],tintStr);
-      const wG=ctx.createLinearGradient(0,skyH,0,H);
-      wG.addColorStop(0,rgb(wTa)); wG.addColorStop(1,rgb(wBa));
-      ctx.fillStyle=wG; ctx.fillRect(0,skyH,W,H-skyH);
+    function drawHabitatCluster(
+      ctx: CanvasRenderingContext2D,
+      habitat: PreparedHabitat,
+      centerX: number,
+      baseY: number,
+      targetWidth: number,
+      targetHeight: number,
+      damage: number,
+      glowColour: string,
+    ) {
+      const scale = Math.min(
+        targetWidth / habitat.canvas.width,
+        targetHeight / habitat.canvas.height,
+      );
 
-      // ── WAVE SURFACE ──────────────────────────────
-      ctx.beginPath(); ctx.moveTo(0,skyH);
-      for(let x=0;x<=W;x+=2){
-        const wy=skyH+Math.sin(x*0.014+tk*0.038)*7+Math.sin(x*0.007+tk*0.02)*4;
-        ctx.lineTo(x,wy);
+      const drawWidth = habitat.canvas.width * scale;
+      const drawHeight = habitat.canvas.height * scale;
+      const drawX = centerX - drawWidth / 2;
+      const drawY = baseY - drawHeight;
+
+      // A soft shadow makes the habitat look attached to the seabed.
+      ctx.save();
+      const shadowGradient = ctx.createRadialGradient(
+        centerX,
+        baseY - 7,
+        0,
+        centerX,
+        baseY - 7,
+        drawWidth * 0.55,
+      );
+      shadowGradient.addColorStop(
+        0,
+        `rgba(0, 0, 0, ${0.42 + damage * 0.2})`,
+      );
+      shadowGradient.addColorStop(0.72, "rgba(0, 0, 0, 0.2)");
+      shadowGradient.addColorStop(1, "rgba(0, 0, 0, 0)");
+      ctx.fillStyle = shadowGradient;
+      ctx.beginPath();
+      ctx.ellipse(
+        centerX,
+        baseY - 5,
+        drawWidth * 0.52,
+        Math.max(16, drawHeight * 0.09),
+        0,
+        0,
+        Math.PI * 2,
+      );
+      ctx.fill();
+      ctx.restore();
+
+      // A very subtle local glow separates the habitat from the dark water
+      // without making it look like a rectangular card.
+      ctx.save();
+      const halo = ctx.createRadialGradient(
+        centerX,
+        baseY - drawHeight * 0.42,
+        10,
+        centerX,
+        baseY - drawHeight * 0.42,
+        drawWidth * 0.62,
+      );
+      halo.addColorStop(0, glowColour);
+      halo.addColorStop(1, "rgba(0, 0, 0, 0)");
+      ctx.globalAlpha = Math.max(0.08, 0.22 - damage * 0.12);
+      ctx.fillStyle = halo;
+      ctx.fillRect(
+        drawX - 30,
+        drawY - 25,
+        drawWidth + 60,
+        drawHeight + 50,
+      );
+      ctx.restore();
+
+      ctx.save();
+      ctx.globalAlpha = Math.max(0.28, 1 - damage * 0.62);
+      ctx.filter = [
+        `grayscale(${Math.round(damage * 52)}%)`,
+        `brightness(${Math.round(88 - damage * 28)}%)`,
+        `contrast(${Math.round(104 - damage * 8)}%)`,
+        `saturate(${Math.round(86 - damage * 40)}%)`,
+        "drop-shadow(0 10px 14px rgba(0,0,0,0.48))",
+      ].join(" ");
+
+      ctx.drawImage(
+        habitat.canvas,
+        drawX,
+        drawY,
+        drawWidth,
+        drawHeight,
+      );
+      ctx.restore();
+
+      // Blend the lower edge into the same sediment used by the rest
+      // of the simulator so the habitat appears to grow from the floor.
+      const sedimentGradient = ctx.createLinearGradient(
+        0,
+        baseY - 28,
+        0,
+        baseY + 12,
+      );
+      sedimentGradient.addColorStop(0, "rgba(31, 25, 18, 0)");
+      sedimentGradient.addColorStop(
+        0.58,
+        `rgba(31, 25, 18, ${0.26 + damage * 0.12})`,
+      );
+      sedimentGradient.addColorStop(1, "rgba(12, 10, 8, 0.78)");
+
+      ctx.save();
+      ctx.fillStyle = sedimentGradient;
+      ctx.beginPath();
+      ctx.ellipse(
+        centerX,
+        baseY,
+        drawWidth * 0.53,
+        Math.max(18, drawHeight * 0.11),
+        0,
+        Math.PI,
+        Math.PI * 2,
+      );
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function drawNaturalSeabedDetails(
+      ctx: CanvasRenderingContext2D,
+      width: number,
+      height: number,
+      damage: number,
+    ) {
+      const baseY = height - 36;
+
+      for (let index = 0; index < 42; index += 1) {
+        const x = ((index * 97 + 35) % width) + Math.sin(index * 2.7) * 13;
+        const size = 3 + (index % 7);
+        const y = baseY + Math.sin(index * 1.9) * 8;
+
+        ctx.beginPath();
+        ctx.ellipse(
+          x,
+          y,
+          size * 1.35,
+          size * 0.62,
+          Math.sin(index) * 0.6,
+          0,
+          Math.PI * 2,
+        );
+        ctx.fillStyle =
+          index % 3 === 0
+            ? `rgba(90, 77, 61, ${0.34 + damage * 0.12})`
+            : `rgba(57, 49, 39, ${0.38 + damage * 0.12})`;
+        ctx.fill();
       }
-      ctx.lineTo(W,0); ctx.lineTo(0,0); ctx.closePath();
-      ctx.fillStyle=`rgba(${wTa[0]},${wTa[1]},${wTa[2]},0.45)`; ctx.fill();
+    }
 
-      // ── GOD RAYS ─────────────────────────────────
-      if(h>18){
-        for(let r=0;r<8;r++){
-          const rx=W*0.08+r*(W*0.12)+Math.sin(tk*0.011+r*1.3)*28;
-          const rw=16+r*5;
-          const rG=ctx.createLinearGradient(rx,skyH,rx,H);
-          const al=(h/100)*0.075;
-          rG.addColorStop(0,`rgba(190,235,255,${al*2})`);
-          rG.addColorStop(0.5,`rgba(190,235,255,${al*0.6})`);
-          rG.addColorStop(1,"transparent");
-          ctx.beginPath();
-          ctx.moveTo(rx-rw/2,skyH); ctx.lineTo(rx+rw/2,skyH);
-          ctx.lineTo(rx+rw+60,H);   ctx.lineTo(rx-rw-60,H);
-          ctx.closePath(); ctx.fillStyle=rG; ctx.fill();
+    function drawHabitatLabel(
+      ctx: CanvasRenderingContext2D,
+      label: string,
+      x: number,
+      y: number,
+    ) {
+      ctx.save();
+      ctx.font = "bold 11px Arial";
+      const metrics = ctx.measureText(label);
+      const paddingX = 9;
+      const boxWidth = metrics.width + paddingX * 2;
+      ctx.fillStyle = "rgba(0, 10, 22, 0.72)";
+      ctx.strokeStyle = "rgba(92, 224, 235, 0.5)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(x, y - 17, boxWidth, 23, 8);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = "rgba(218, 251, 255, 0.9)";
+      ctx.fillText(label, x + paddingX, y);
+      ctx.restore();
+    }
+
+    function drawSeepField(
+      ctx: CanvasRenderingContext2D,
+      width: number,
+      height: number,
+      tick: number,
+      healthValue: number,
+    ) {
+      const seepX = width * 0.63;
+      const baseY = height - 45;
+      const glow = ctx.createRadialGradient(seepX, baseY, 5, seepX, baseY, 95);
+      glow.addColorStop(0, `rgba(75, 214, 195, ${0.18 + healthValue / 700})`);
+      glow.addColorStop(1, "rgba(75, 214, 195, 0)");
+      ctx.fillStyle = glow;
+      ctx.fillRect(seepX - 105, baseY - 105, 210, 115);
+
+      for (let index = 0; index < 14; index += 1) {
+        const phase = (tick * 0.55 + index * 43) % 190;
+        const x = seepX + Math.sin(index * 2.2) * 55 + Math.sin(tick * 0.01 + index) * 4;
+        const y = baseY - phase;
+        const size = 2.2 + (index % 4);
+        ctx.beginPath();
+        ctx.arc(x, y, size, 0, Math.PI * 2);
+        ctx.strokeStyle = "rgba(145, 255, 235, 0.48)";
+        ctx.stroke();
+      }
+    }
+
+    function drawFrame() {
+      const s = state.current;
+      s.tick += 1;
+
+      const tick = s.tick;
+      const width = canvas.width;
+      const height = canvas.height;
+      const h = s.health;
+      const healthyTop = [9, 54, 100];
+      const healthyBottom = [2, 13, 32];
+      const stressedTop = [72, 48, 40];
+      const stressedBottom = [14, 10, 12];
+      const temperatureTint = Math.max(0, (s.temperature - 35) / 100);
+      const acidTint = Math.max(0, (s.acidification - 35) / 100);
+
+      const topColor = lerpColor(healthyTop, stressedTop, temperatureTint);
+      const bottomColor = lerpColor(healthyBottom, stressedBottom, Math.max(temperatureTint, acidTint * 0.8));
+
+      const waterGradient = context.createLinearGradient(0, 0, 0, height);
+      waterGradient.addColorStop(0, colorToRgb(topColor));
+      waterGradient.addColorStop(0.52, colorToRgb(lerpColor(topColor, bottomColor, 0.68)));
+      waterGradient.addColorStop(1, colorToRgb(bottomColor));
+      context.fillStyle = waterGradient;
+      context.fillRect(0, 0, width, height);
+
+      // Deep-sea light shafts: subtle and weaker than a shallow-water scene.
+      if (h > 22) {
+        for (let index = 0; index < 5; index += 1) {
+          const rayX = width * 0.1 + index * width * 0.19 + Math.sin(tick * 0.008 + index) * 20;
+          const rayGradient = context.createLinearGradient(rayX, 0, rayX, height * 0.72);
+          const alpha = (h / 100) * 0.045;
+          rayGradient.addColorStop(0, `rgba(160, 220, 255, ${alpha * 1.8})`);
+          rayGradient.addColorStop(1, "rgba(160, 220, 255, 0)");
+          context.fillStyle = rayGradient;
+          context.beginPath();
+          context.moveTo(rayX - 18, 0);
+          context.lineTo(rayX + 18, 0);
+          context.lineTo(rayX + 115, height * 0.78);
+          context.lineTo(rayX - 115, height * 0.78);
+          context.closePath();
+          context.fill();
         }
       }
 
-      // ── CAUSTICS (light patterns on floor) ───────
-      if(h>50){
-        ctx.save(); ctx.globalAlpha=0.06*(h/100);
-        for(let c=0;c<12;c++){
-          const cx=((c*180+tk*0.4)%W);
-          const cy=H-60-Math.sin(tk*0.02+c)*30;
-          const cg=ctx.createRadialGradient(cx,cy,0,cx,cy,40+c*5);
-          cg.addColorStop(0,"rgba(200,240,255,1)");
-          cg.addColorStop(1,"transparent");
-          ctx.fillStyle=cg; ctx.beginPath();
-          ctx.ellipse(cx,cy,40+c*3,20,0,0,Math.PI*2); ctx.fill();
-        }
-        ctx.restore();
-      }
+      // Marine snow and bubbles.
+      const visibleBubbles = Math.max(15, Math.floor(s.bubbles.length * (0.45 + h / 200)));
+      s.bubbles.slice(0, visibleBubbles).forEach((bubble) => {
+        bubble.y -= bubble.speed;
+        bubble.wobble += 0.025;
+        bubble.x += Math.sin(bubble.wobble) * 0.32;
 
-      // ── PLASTIC BOTTLES ──────────────────────────
-      const visP=Math.floor(s.plastics.length*(s.pollution/100));
-      const imgP=s.imgs.plastic;
-      if(imgP?.complete){
-        s.plastics.slice(0,visP).forEach(p=>{
-          p.wobble+=0.018;
-          p.x=(p.x+p.vx+W)%W;
-          p.y=Math.max(skyH+10,Math.min(H-40,p.y+Math.sin(p.wobble)*0.3+p.vy));
-          p.rot+=0.25;
-          ctx.save();
-          ctx.translate(p.x,p.y); ctx.rotate(p.rot*Math.PI/180);
-          ctx.globalAlpha=0.72;
-          const pw=52*p.sc, ph=30*p.sc;
-          ctx.drawImage(imgP,-pw/2,-ph/2,pw,ph);
-          ctx.globalAlpha=1; ctx.restore();
+        if (bubble.y < -15) {
+          bubble.y = rand(height * 0.45, height - 30);
+          bubble.x = rand(0, width);
+        }
+
+        context.beginPath();
+        context.arc(bubble.x, bubble.y, bubble.size, 0, Math.PI * 2);
+        context.strokeStyle = `rgba(185, 230, 255, ${bubble.alpha})`;
+        context.lineWidth = 1;
+        context.stroke();
+      });
+
+      // Marine litter: plastic plus lost fishing lines.
+      const visibleLitter = Math.floor(s.litter.length * (s.marineLitter / 100));
+      const plasticImage = s.images.plastic;
+
+      if (plasticImage?.complete) {
+        s.litter.slice(0, visibleLitter).forEach((item) => {
+          item.wobble += 0.016;
+          item.x = (item.x + item.vx + width) % width;
+          item.y = Math.max(35, Math.min(height - 55, item.y + item.vy + Math.sin(item.wobble) * 0.22));
+          item.rotation += 0.18;
+
+          context.save();
+          context.translate(item.x, item.y);
+          context.rotate((item.rotation * Math.PI) / 180);
+          context.globalAlpha = 0.68;
+          const litterWidth = 50 * item.scale;
+          const litterHeight = 29 * item.scale;
+          context.drawImage(plasticImage, -litterWidth / 2, -litterHeight / 2, litterWidth, litterHeight);
+          context.restore();
         });
       }
 
-      // ── BUBBLES ──────────────────────────────────
-      const visB=Math.max(8,Math.floor(s.bubbles.length*(h/100)));
-      s.bubbles.slice(0,visB).forEach(b=>{
-        b.y-=b.spd; b.wb+=0.032;
-        b.x+=Math.sin(b.wb)*0.55;
-        if(b.y<skyH+15){b.y=rand(H*0.5,H-40);b.x=rand(0,W);}
-        const grad=ctx.createRadialGradient(b.x-b.sz*0.3,b.y-b.sz*0.3,b.sz*0.1,b.x,b.y,b.sz);
-        grad.addColorStop(0,`rgba(255,255,255,${b.alpha*0.8})`);
-        grad.addColorStop(0.5,`rgba(180,230,255,${b.alpha*0.3})`);
-        grad.addColorStop(1,"transparent");
-        ctx.beginPath(); ctx.arc(b.x,b.y,b.sz,0,Math.PI*2);
-        ctx.fillStyle=grad; ctx.fill();
-        ctx.strokeStyle=`rgba(180,230,255,${b.alpha*0.5})`; ctx.lineWidth=1; ctx.stroke();
-      });
-
-      // ── BOTTOM CORAL PNG ─────────────────────────
-      const imgHC=s.imgs.hcoral, imgDC=s.imgs.dcoral;
-      s.corals.forEach((c,i)=>{
-        const targetGrow=h/100;
-        c.grown+=(targetGrow-c.grown)*0.015;
-        const sway=Math.sin(tk*0.018+i*0.6)*4;
-        const cw=c.sz+20, ch=(c.sz+30)*c.grown;
-        if(ch<2) return;
-        ctx.save(); ctx.translate(c.x+sway,H-18);
-        const bleach=Math.max(0,(50-h)/50);
-        if(imgHC?.complete && c.grown>0.05){
-          ctx.globalAlpha=c.grown*(1-bleach*0.9);
-          ctx.drawImage(imgHC,-cw/2,-ch,cw,ch);
-        }
-        if(imgDC?.complete && bleach>0.05){
-          ctx.globalAlpha=bleach*c.grown;
-          ctx.drawImage(imgDC,-cw/2,-ch,cw,ch);
-        }
-        ctx.globalAlpha=1; ctx.restore();
-      });
-
-      // ── DRAWN CORAL (realistic branching) ────────
-      s.drawn.forEach(dc=>{
-        if(dc.grown<1) dc.grown=Math.min(1,dc.grown+0.02);
-        const col=h<30?"#B0B0A0":dc.color;
-        const g=dc.grown;
-        ctx.save(); ctx.translate(dc.x,dc.y);
-        // main stem with taper
-        const stemH=dc.sz*g;
-        const stemGrad=ctx.createLinearGradient(0,0,0,-stemH);
-        stemGrad.addColorStop(0,col+"CC"); stemGrad.addColorStop(1,col);
-        ctx.strokeStyle=stemGrad; ctx.lineWidth=4; ctx.lineCap="round";
-        ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(0,-stemH); ctx.stroke();
-        // branches at different heights
-        const branches=[[0.4,-28,18],[0.55,25,16],[0.7,-22,14],[0.85,20,12]];
-        branches.forEach(([frac,angle,len])=>{
-          if(g<frac as number) return;
-          const branchG=(g-( frac as number))/(1-( frac as number));
-          const bLen=( len as number)*branchG;
-          const bAngle=(angle as number)*Math.PI/180;
-          const by=-stemH*(frac as number);
-          ctx.save(); ctx.translate(0,by);
-          ctx.beginPath(); ctx.moveTo(0,0);
-          ctx.lineTo(Math.sin(bAngle)*bLen,-Math.cos(bAngle)*bLen);
-          ctx.strokeStyle=col; ctx.lineWidth=2.5; ctx.stroke();
-          // tip circle
-          if(branchG>0.7){
-            ctx.beginPath();
-            ctx.arc(Math.sin(bAngle)*bLen,-Math.cos(bAngle)*bLen,4,0,Math.PI*2);
-            ctx.fillStyle=col; ctx.fill();
-          }
-          ctx.restore();
-        });
-        // polyp dots on stem
-        for(let p=0;p<5;p++){
-          const py=-stemH*(p/5)*g;
-          const px=Math.sin(tk*0.04+p+dc.id)*6;
-          ctx.beginPath(); ctx.arc(px,py,3,0,Math.PI*2);
-          ctx.fillStyle=col+"CC"; ctx.fill();
-        }
-        ctx.restore();
-      });
-
-      // ── JELLYFISH ─────────────────────────────────
-      if(h>45){
-        s.jellies.forEach(j=>{
-          j.phase+=0.02; j.vx+=Math.sin(j.phase*0.3)*0.02;
-          j.vx=Math.max(-0.5,Math.min(0.5,j.vx));
-          j.x+=j.vx; j.y+=Math.sin(j.phase)*0.32;
-          j.x=((j.x+W)%W); j.y=Math.max(skyH+20,Math.min(H-130,j.y));
-          const pulse=0.82+Math.sin(j.phase*2.8)*0.18;
-          ctx.save(); ctx.translate(j.x,j.y);
-          // glow
-          const glow=ctx.createRadialGradient(0,0,0,0,0,j.sz*1.8);
-          glow.addColorStop(0,j.col+"33"); glow.addColorStop(1,"transparent");
-          ctx.fillStyle=glow; ctx.beginPath(); ctx.arc(0,0,j.sz*1.8,0,Math.PI*2); ctx.fill();
-          // dome
-          ctx.beginPath(); ctx.ellipse(0,0,j.sz*pulse,j.sz*0.6*pulse,0,Math.PI,0);
-          const dg=ctx.createRadialGradient(0,-j.sz*0.2,j.sz*0.1,0,0,j.sz);
-          dg.addColorStop(0,j.col+"EE"); dg.addColorStop(0.6,j.col+"88"); dg.addColorStop(1,j.col+"33");
-          ctx.fillStyle=dg; ctx.fill();
-          ctx.strokeStyle=j.col+"AA"; ctx.lineWidth=1.5; ctx.stroke();
-          // inner structure
-          ctx.beginPath(); ctx.ellipse(0,-j.sz*0.1,j.sz*0.4*pulse,j.sz*0.22*pulse,0,Math.PI,0);
-          ctx.fillStyle=j.col+"44"; ctx.fill();
-          // tentacles
-          for(let k=0;k<7;k++){
-            const tx=-j.sz*0.9*pulse+(k/6)*j.sz*1.8*pulse;
-            const tw1=Math.sin(j.phase*1.4+k*0.8)*12;
-            const tw2=Math.sin(j.phase*1.1+k*1.2)*8;
-            ctx.beginPath(); ctx.moveTo(tx,0);
-            ctx.bezierCurveTo(tx+tw1,j.sz*0.8,tx+tw2,j.sz*1.5,tx+tw1*0.4,j.sz*2.4);
-            ctx.strokeStyle=j.col+"55"; ctx.lineWidth=1.5; ctx.stroke();
-          }
-          ctx.restore();
-        });
+      const lineCount = Math.floor(s.marineLitter / 16);
+      for (let index = 0; index < lineCount; index += 1) {
+        const x = width * (0.12 + index * 0.14);
+        const y = height - 120 - (index % 3) * 50;
+        context.beginPath();
+        context.moveTo(x - 45, y - 40);
+        context.bezierCurveTo(
+          x + Math.sin(tick * 0.01 + index) * 35,
+          y - 15,
+          x - 25,
+          y + 25,
+          x + 35,
+          y + 45,
+        );
+        context.strokeStyle = "rgba(215, 225, 210, 0.5)";
+        context.lineWidth = 1.6;
+        context.stroke();
       }
 
-      // ── FISHING NET ──────────────────────────────
-      const n=s.net;
-      n.cooldown=Math.max(0,n.cooldown-1);
-      if(s.fishing>25 && !n.active && n.cooldown===0){
-        n.active=true; n.x=-280; n.spd=2.2+s.fishing/35;
-      }
-      if(n.active){
-        n.x+=n.spd;
-        const imgN=s.imgs.net;
-        if(imgN?.complete){
-          ctx.save(); ctx.globalAlpha=0.82;
-          ctx.drawImage(imgN,n.x,skyH+10,160,H-skyH-40);
-          ctx.globalAlpha=1; ctx.restore();
-        }
-        // rope at top
-        ctx.beginPath(); ctx.moveTo(n.x+80,skyH+10);
-        ctx.lineTo(n.x+80,-10); ctx.strokeStyle="rgba(200,160,80,0.7)"; ctx.lineWidth=3; ctx.stroke();
+      drawDeepSeaFloor(context, width, height);
 
-        // fish flee net
-        s.fish.forEach(f=>{
-          if(Math.abs(f.x-n.x)<200){ f.flee=90; f.dir=1; }
-        });
-        if(n.x>W+320){ n.active=false; n.cooldown=Math.max(60,220-Math.floor(s.fishing*1.8)); }
+      // Repeated trawling leaves visible tracks and can flatten parts of the seabed.
+      const scarCount = Math.floor(s.bottomTrawling / 18);
+      for (let index = 0; index < scarCount; index += 1) {
+        const scarY = height - 34 - (index % 3) * 7;
+        context.beginPath();
+        context.moveTo(index * 165 - 40, scarY);
+        context.lineTo(index * 165 + 115, scarY + Math.sin(index) * 3);
+        context.strokeStyle = `rgba(94, 76, 58, ${0.22 + s.bottomTrawling / 520})`;
+        context.lineWidth = 3;
+        context.stroke();
       }
 
-      // ── SPECIAL CREATURES ────────────────────────
-      s.specials.forEach(sp=>{
-        sp.wb+=0.018;
-        sp.x+=sp.dir*sp.spd;
-        sp.y+=Math.sin(sp.wb)*0.35;
-        sp.y=Math.max(skyH+15,Math.min(H-sp.sz-10,sp.y));
-        if(sp.x>W+sp.sz+100){ sp.x=-sp.sz-50; sp.y=rand(skyH+20,H-90); }
-        if(sp.x<-sp.sz-200){  sp.x=W+sp.sz+50; sp.y=rand(skyH+20,H-90); }
+      const warmingDamage = Math.max(0, (s.temperature - 30) / 70);
+      const acidificationDamage = Math.max(0, (s.acidification - 25) / 75);
+      const ecosystemDamage = Math.max(0, (65 - h) / 65);
+      const trawlingDamage = s.bottomTrawling / 100;
 
-        const img=s.imgs[sp.type];
-        if(!img?.complete) return;
-        ctx.save();
-        ctx.translate(sp.x,sp.y);
-        // depth fade
-        ctx.globalAlpha=sp.depth*(h<40?0.45:0.9);
-        // flip: whale/turtle face right natively, shark faces left natively
-        // so if dir=-1 for whale/turtle → flip; if dir=1 for shark → flip
-        const needFlip =
-          (sp.type==="shark"  && sp.dir===1) ||
-          (sp.type!=="shark"  && sp.dir===-1);
-        if(needFlip) ctx.scale(-1,1);
-        ctx.drawImage(img,-sp.sz/2,-sp.sz/4,sp.sz,sp.sz/2);
-        ctx.globalAlpha=1; ctx.restore();
-      });
+      drawNaturalSeabedDetails(
+        context,
+        width,
+        height,
+        ecosystemDamage,
+      );
 
-      // ── FISH (correct direction) ──────────────────
-      const visF=Math.max(2,Math.floor(s.fish.length*(h/100)));
-      s.fish.slice(0,visF).forEach(f=>{
-        f.wb+=0.028;
-        // mouse flee
-        const dx=f.x-s.mx, dy=f.y-s.my;
-        if(Math.hypot(dx,dy)<130){ f.flee=60; f.dir=dx>0?1:-1; }
-        if(f.flee>0) f.flee--;
-        const spd=f.flee>0 ? Math.min(5.5,f.spd*3.2) : f.spd;
-        f.x+=f.dir*spd;
-        f.y+=Math.sin(f.wb)*0.42+Math.sin(f.wb*0.3)*0.2;
-        f.y=Math.max(skyH+15,Math.min(H-45,f.y));
-        if(f.x>W+200){ f.x=-60; f.y=rand(skyH+20,H-60); }
-        if(f.x<-200){  f.x=W+60; f.y=rand(skyH+20,H-60); }
-
-        let img: HTMLImageElement;
-        if(h<35) img=s.imgs.dead;
-        else img = f.type===0 ? s.imgs.fish1 : s.imgs.fish2;
-        if(!img?.complete) return;
-
-        ctx.save();
-        ctx.translate(f.x,f.y);
-        ctx.globalAlpha=f.depth*(h<30?0.5:1);
-
-        if(h<35){
-          // dead fish float upside down
-          ctx.rotate(Math.PI);
-        } else {
-          // KEY FIX:
-          // fish1.png faces RIGHT  → dir=1 (right) = no flip, dir=-1 (left) = flip
-          // fish2.png faces LEFT   → dir=-1 (left) = no flip, dir=1 (right) = flip
-          const isFlipped=
-            (f.type===0 && f.dir===-1) ||  // fish1 going left → flip
-            (f.type===1 && f.dir===1);      // fish2 going right → flip
-          if(isFlipped) ctx.scale(-1,1);
-        }
-
-        // slight up/down wobble using rotate
-        ctx.rotate(Math.sin(f.wb*2)*0.08);
-        ctx.drawImage(img,-f.sz/2,-f.sz/4,f.sz,f.sz/2);
-
-        // shadow below fish
-        ctx.globalAlpha*=0.3;
-        ctx.scale(1,-0.3);
-        ctx.drawImage(img,-f.sz/2,-f.sz/4,f.sz,f.sz/2);
-
-        ctx.globalAlpha=1; ctx.restore();
-      });
-
-      // ── PARTICLES (coral click feedback) ─────────
-      s.particles=s.particles.filter(p=>{
-        p.x+=p.vx; p.y+=p.vy; p.vy+=0.08; p.life--;
-        if(p.life<=0) return false;
-        ctx.beginPath(); ctx.arc(p.x,p.y,p.sz,0,Math.PI*2);
-        ctx.fillStyle=p.col+Math.round((p.life/60)*255).toString(16).padStart(2,"0");
-        ctx.fill(); return true;
-      });
-
-      // ── DEPTH DARKNESS ───────────────────────────
-      if(h<65){
-        const dk=(65-h)/65;
-        const dg=ctx.createLinearGradient(0,H*0.42,0,H);
-        dg.addColorStop(0,"transparent"); dg.addColorStop(1,`rgba(0,0,0,${0.8*dk})`);
-        ctx.fillStyle=dg; ctx.fillRect(0,H*0.42,W,H);
-      }
-
-      // ── FLOOR ────────────────────────────────────
-      const fg=ctx.createLinearGradient(0,H-22,0,H);
-      fg.addColorStop(0,"#1A1008"); fg.addColorStop(1,"#080604");
-      ctx.fillStyle=fg; ctx.fillRect(0,H-22,W,22);
-
-      // ── CENTER MESSAGE ────────────────────────────
-      const msgs:[number,number,string,string][]=[
-        [85,101,"The Ocean is Alive 🌊","#40DCBE"],
-        [70, 85,"The Ocean Needs Care 💙","#4090DC"],
-        [55, 70,"Warning Signs Growing ⚠️","#DC9830"],
-        [35, 55,"Ocean Under Threat 🔴","#DC5020"],
-        [ 0, 35,"CRITICAL — Act Now! ☠️","#DC2020"],
+      // The habitats share one continuous seabed. Their widths, heights and
+      // vertical positions are intentionally different so they look like
+      // natural clusters instead of four equal image cards.
+      const habitatZones = [
+        {
+          key: "lophelia",
+          label: "Lophelia pertusa reef",
+          centerX: width * 0.13,
+          baseY: height - 27,
+          targetWidth: width * 0.27,
+          targetHeight: 255,
+          sensitivity: 1,
+          glow: "rgba(120, 198, 218, 0.32)",
+        },
+        {
+          key: "coralGarden",
+          label: "Coral garden",
+          centerX: width * 0.375,
+          baseY: height - 31,
+          targetWidth: width * 0.245,
+          targetHeight: 238,
+          sensitivity: 0.92,
+          glow: "rgba(201, 117, 184, 0.28)",
+        },
+        {
+          key: "seepField",
+          label: "Seep field",
+          centerX: width * 0.625,
+          baseY: height - 24,
+          targetWidth: width * 0.26,
+          targetHeight: 218,
+          sensitivity: 0.62,
+          glow: "rgba(78, 218, 194, 0.3)",
+        },
+        {
+          key: "spongeGround",
+          label: "Sponge ground",
+          centerX: width * 0.87,
+          baseY: height - 30,
+          targetWidth: width * 0.235,
+          targetHeight: 205,
+          sensitivity: 0.82,
+          glow: "rgba(213, 176, 104, 0.28)",
+        },
       ];
-      for(const [lo,hi,msg,col] of msgs){
-        if(h>=lo&&h<hi){
-          const al=0.52+Math.sin(tk*0.04)*0.2;
-          ctx.save();
-          ctx.font="bold 28px Arial";
-          ctx.textAlign="center";
-          ctx.shadowColor=col; ctx.shadowBlur=22;
-          ctx.fillStyle=col+Math.round(al*255).toString(16).padStart(2,"0");
-          ctx.fillText(msg,W/2,H/2-20);
-          ctx.shadowBlur=0; ctx.restore();
+
+      if (s.habitatsReady) {
+        habitatZones.forEach((zone) => {
+          const habitat = s.habitats[zone.key];
+          if (!habitat) return;
+
+          const damage = Math.min(
+            0.94,
+            ecosystemDamage * 0.52 +
+              warmingDamage * 0.22 * zone.sensitivity +
+              acidificationDamage * 0.3 * zone.sensitivity +
+              trawlingDamage * 0.42,
+          );
+
+          drawHabitatCluster(
+            context,
+            habitat,
+            zone.centerX,
+            zone.baseY,
+            zone.targetWidth,
+            zone.targetHeight,
+            damage,
+            zone.glow,
+          );
+
+          const scale = Math.min(
+            zone.targetWidth / habitat.canvas.width,
+            zone.targetHeight / habitat.canvas.height,
+          );
+          const actualWidth = habitat.canvas.width * scale;
+          const actualHeight = habitat.canvas.height * scale;
+
+          drawHabitatLabel(
+            context,
+            zone.label,
+            Math.max(12, zone.centerX - actualWidth * 0.46),
+            Math.max(30, zone.baseY - actualHeight - 10),
+          );
+        });
+      } else {
+        context.save();
+        context.textAlign = "center";
+        context.font = "600 15px Arial";
+        context.fillStyle = s.habitatLoadError
+          ? "rgba(255, 130, 110, 0.92)"
+          : "rgba(160, 225, 235, 0.78)";
+        context.fillText(
+          s.habitatLoadError
+            ? "Habitat images could not be loaded. Check src/assets filenames."
+            : "Loading deep-sea habitats…",
+          width / 2,
+          height - 105,
+        );
+        context.restore();
+      }
+
+      // The seep field has its own rising-fluid and bubble activity.
+      drawSeepField(context, width, height, tick, h);
+
+      // Lost fishing line becomes entangled mainly around coral habitats.
+      const entanglementCount = Math.min(7, Math.floor(s.marineLitter / 14));
+      const coralHabitatCenters = [width * 0.125, width * 0.375];
+
+      for (let index = 0; index < entanglementCount; index += 1) {
+        const centerX = coralHabitatCenters[index % coralHabitatCenters.length];
+        const x = centerX + ((index % 3) - 1) * 70;
+        const lineY = height - 130 - (index % 2) * 34;
+
+        context.beginPath();
+        context.moveTo(x - 50, lineY - 30);
+        context.bezierCurveTo(
+          x + Math.sin(tick * 0.01 + index) * 28,
+          lineY - 10,
+          x - 28,
+          lineY + 28,
+          x + 52,
+          lineY + 48,
+        );
+        context.strokeStyle = "rgba(225, 231, 218, 0.7)";
+        context.lineWidth = 1.8;
+        context.stroke();
+      }
+
+      // Bottom-trawling event: gear moves across the seafloor and creates sediment.
+      const trawl = s.trawl;
+      trawl.cooldown = Math.max(0, trawl.cooldown - 1);
+
+      if (s.bottomTrawling > 25 && !trawl.active && trawl.cooldown === 0) {
+        trawl.active = true;
+        trawl.x = -320;
+        trawl.speed = 2.4 + s.bottomTrawling / 28;
+      }
+
+      if (trawl.active) {
+        trawl.x += trawl.speed;
+        const netImage = s.images.net;
+
+        if (netImage?.complete) {
+          context.save();
+          context.globalAlpha = 0.82;
+          context.drawImage(netImage, trawl.x, height - 205, 250, 175);
+          context.restore();
+        }
+
+        context.beginPath();
+        context.moveTo(trawl.x + 118, height - 190);
+        context.lineTo(trawl.x + 55, 0);
+        context.strokeStyle = "rgba(210, 175, 100, 0.72)";
+        context.lineWidth = 3;
+        context.stroke();
+
+        if (tick % 2 === 0) {
+          for (let index = 0; index < 5; index += 1) {
+            s.sediment.push({
+              x: trawl.x + rand(20, 235),
+              y: height - rand(35, 65),
+              vx: rand(-1.5, 1.1),
+              vy: rand(-2.5, -0.3),
+              life: randInt(70, 140),
+              size: rand(5, 18),
+            });
+          }
+        }
+
+
+        s.fish.forEach((fish) => {
+          if (Math.abs(fish.x - trawl.x) < 240 && fish.y > height - 260) {
+            fish.flee = 90;
+            fish.direction = fish.x > trawl.x ? 1 : -1;
+          }
+        });
+
+        if (trawl.x > width + 360) {
+          trawl.active = false;
+          trawl.cooldown = Math.max(55, 250 - Math.floor(s.bottomTrawling * 1.7));
+        }
+      }
+
+      s.sediment = s.sediment.filter((particle) => {
+        particle.x += particle.vx;
+        particle.y += particle.vy;
+        particle.vy += 0.02;
+        particle.life -= 1;
+
+        if (particle.life <= 0) return false;
+
+        context.beginPath();
+        context.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
+        context.fillStyle = `rgba(165, 135, 92, ${Math.min(0.42, particle.life / 210)})`;
+        context.fill();
+        return true;
+      });
+
+      // Fish population declines with habitat condition and marine heatwave pressure.
+      const heatwavePenalty = Math.max(0, (s.temperature - 55) * 0.72);
+      const fishSupport = Math.max(0, h - heatwavePenalty);
+      const visibleFish = Math.max(2, Math.floor(s.fish.length * (fishSupport / 100)));
+      s.fish.slice(0, visibleFish).forEach((fish) => {
+        fish.wobble += 0.026;
+
+        const dx = fish.x - s.mouseX;
+        const dy = fish.y - s.mouseY;
+        if (Math.hypot(dx, dy) < 125) {
+          fish.flee = 55;
+          fish.direction = dx > 0 ? 1 : -1;
+        }
+
+        if (fish.flee > 0) fish.flee -= 1;
+        const speed = fish.flee > 0 ? Math.min(5.2, fish.speed * 3.1) : fish.speed;
+
+        fish.x += fish.direction * speed;
+        fish.y += Math.sin(fish.wobble) * 0.38;
+        fish.y = Math.max(60, Math.min(height - 75, fish.y));
+
+        if (fish.x > width + 180) {
+          fish.x = -70;
+          fish.y = rand(70, height - 90);
+        }
+        if (fish.x < -180) {
+          fish.x = width + 70;
+          fish.y = rand(70, height - 90);
+        }
+
+        const useDeadFish = h < 32 || s.temperature > 74;
+        const image = useDeadFish
+          ? s.images.deadFish
+          : fish.type === 0
+            ? s.images.fish1
+            : s.images.fish2;
+
+        if (!image?.complete) return;
+
+        context.save();
+        context.translate(fish.x, fish.y);
+        context.globalAlpha = fish.depth * (h < 30 ? 0.5 : 1);
+
+        if (useDeadFish) {
+          context.rotate(Math.PI);
+        } else {
+          const shouldFlip =
+            (fish.type === 0 && fish.direction === -1) ||
+            (fish.type === 1 && fish.direction === 1);
+          if (shouldFlip) context.scale(-1, 1);
+        }
+
+        context.rotate(Math.sin(fish.wobble * 2) * 0.06);
+        context.drawImage(image, -fish.size / 2, -fish.size / 4, fish.size, fish.size / 2);
+        context.restore();
+      });
+
+
+      // A deep-sea shark remains only while the ecosystem can support predators.
+      if (h >= 28) {
+        const shark = s.shark;
+        shark.wobble += 0.012;
+        shark.x += shark.direction * (0.75 + h / 180);
+        shark.y += Math.sin(shark.wobble) * 0.25;
+
+        if (shark.x > width + 180) {
+          shark.x = -180;
+          shark.direction = 1;
+          shark.y = rand(170, 390);
+        }
+
+        const sharkImage = s.images.shark;
+        if (sharkImage?.complete) {
+          context.save();
+          context.translate(shark.x, shark.y);
+          context.globalAlpha = 0.55 + h / 250;
+          context.scale(-1, 1);
+          context.drawImage(sharkImage, -85, -34, 170, 68);
+          context.restore();
+        }
+      }
+
+
+      // Acidification haze near the seafloor.
+      if (s.acidification > 35) {
+        const haze = context.createLinearGradient(0, height * 0.45, 0, height);
+        haze.addColorStop(0, "rgba(95, 50, 130, 0)");
+        haze.addColorStop(
+          1,
+          `rgba(95, 50, 130, ${Math.min(0.32, (s.acidification - 35) / 220)})`,
+        );
+        context.fillStyle = haze;
+        context.fillRect(0, height * 0.45, width, height * 0.55);
+      }
+
+      // Central ecosystem status.
+      const messages: Array<[number, number, string, string]> = [
+        [85, 101, "Thriving Deep-Sea Habitat", "#62e6c9"],
+        [70, 85, "Stable, but Protection Is Needed", "#62bde6"],
+        [55, 70, "Early Ecosystem Stress", "#e5b65e"],
+        [35, 55, "Deep-Sea Habitat Under Threat", "#ee7b45"],
+        [0, 35, "Critical Habitat Loss", "#f05252"],
+      ];
+
+      for (const [minimum, maximum, message, color] of messages) {
+        if (h >= minimum && h < maximum) {
+          const alpha = 0.55 + Math.sin(tick * 0.035) * 0.18;
+          context.save();
+          context.font = "bold 27px Arial";
+          context.textAlign = "center";
+          context.shadowColor = color;
+          context.shadowBlur = 20;
+          context.fillStyle = `${color}${Math.round(alpha * 255)
+            .toString(16)
+            .padStart(2, "0")}`;
+          context.fillText(message, width / 2, height / 2 - 24);
+          context.restore();
           break;
         }
       }
 
-      // ── NET WARNING ───────────────────────────────
-      if(n.active){
-        ctx.save(); ctx.font="bold 13px Arial"; ctx.textAlign="center";
-        ctx.fillStyle="rgba(255,200,40,0.9)";
-        ctx.fillText("⚠ Fishing net sweeping — fish are fleeing!",W/2,skyH+16);
-        ctx.restore();
-      }
+      // Scientific event alerts.
+      const alerts: string[] = [];
+      if (trawl.active) alerts.push("Bottom trawling is resuspending sediment and damaging habitat");
+      if (s.temperature > 62) alerts.push("Marine heatwave risk is increasing");
+      if (s.acidification > 62) alerts.push("Acidification is reducing coral calcification");
+      if (s.marineLitter > 62) alerts.push("Lost gear and litter are accumulating on the seafloor");
 
-      S.current.rafId=requestAnimationFrame(drawFrame);
+      alerts.slice(0, 2).forEach((alert, index) => {
+        context.save();
+        context.font = "bold 13px Arial";
+        context.textAlign = "center";
+        context.fillStyle = index === 0 ? "rgba(255, 204, 92, 0.96)" : "rgba(255, 150, 92, 0.92)";
+        context.fillText(`⚠ ${alert}`, width / 2, 24 + index * 22);
+        context.restore();
+      });
+
+      s.rafId = requestAnimationFrame(drawFrame);
     }
 
-    S.current.rafId=requestAnimationFrame(drawFrame);
-    return ()=>cancelAnimationFrame(S.current.rafId);
-  },[]);
+    state.current.rafId = requestAnimationFrame(drawFrame);
+
+    return () => {
+      cancelAnimationFrame(state.current.rafId);
+    };
+  }, []);
 
   return (
     <canvas
       ref={canvasRef}
-      width={1400} height={620}
-      style={{width:"100%",height:"100%",display:"block",cursor:"crosshair"}}
-      onMouseMove={onMove} onMouseLeave={onLeave} onClick={onClick}
+      width={1400}
+      height={620}
+      className="ocean-canvas"
+      onMouseMove={onMouseMove}
+      onMouseLeave={onMouseLeave}
     />
   );
 }
 
-// ══════════════════════════════════════════════════════════
-//  LIFECYCLE / ANIMALS / TIPS (unchanged logic)
-// ══════════════════════════════════════════════════════════
-const LIFECYCLE=[
-  {stage:"Stage 1",name:"Coral Polyp",    desc:"A single polyp attaches to rock. Takes 3 years in real life.",threshold:85},
-  {stage:"Stage 2",name:"First Fish",     desc:"Small fish return, bringing vital nutrients to new coral.", threshold:70},
-  {stage:"Stage 3",name:"Colony Forms",   desc:"A full colony grows, home to hundreds of species.",        threshold:55},
-  {stage:"Stage 4",name:"Reef Ecosystem", desc:"25% of all ocean species live here. A complete world.",    threshold:35},
-  {stage:"Stage 5",name:"Bleaching Risk", desc:"Warming water causes coral to expel its colour and die.",  threshold:0},
+const HABITAT_CONDITIONS = [
+  {
+    min: 85,
+    max: 100,
+    name: "Thriving Cold-Water Coral Habitat",
+    description: "Cold-water corals, sponges and benthic animals form a diverse ecosystem.",
+  },
+  {
+    min: 70,
+    max: 84,
+    name: "Stable with Early Stress",
+    description: "The habitat is functioning, but warming, litter or fishing pressure is appearing.",
+  },
+  {
+    min: 55,
+    max: 69,
+    name: "Habitat Disturbance",
+    description: "Marine litter, acidification and sediment begin reducing ecosystem health.",
+  },
+  {
+    min: 35,
+    max: 54,
+    name: "Severe Damage",
+    description: "Coral and sponge grounds are damaged and benthic biodiversity is declining.",
+  },
+  {
+    min: 0,
+    max: 34,
+    name: "Ecosystem Collapse Risk",
+    description: "Large areas of habitat are lost and recovery may take decades or centuries.",
+  },
 ];
-const ANIMALS=[
-  {name:"Sea Turtle 🐢",threshold:55},{name:"Dolphin 🐬",threshold:40},
-  {name:"Shark 🦈",threshold:30},{name:"Octopus 🐙",threshold:45},{name:"Blue Whale 🐋",threshold:25},
+
+const MARINE_LIFE_STATUS = [
+  { name: "Cold-Water Coral 🪸", threshold: 65 },
+  { name: "Deep-Sea Sponge 🧽", threshold: 58 },
+  { name: "Benthic Fish 🐟", threshold: 48 },
+  { name: "Deep-Sea Crustaceans 🦐", threshold: 40 },
+  { name: "Deep-Sea Octopus 🐙", threshold: 45 },
+  { name: "Deep-Sea Shark 🦈", threshold: 30 },
+  { name: "Brittle Star ⭐", threshold: 38 },
+  { name: "Sea Anemone 🌸", threshold: 42 },
 ];
-const TIPS:Record<string,string[]>={
-  pollution:  ["♻ Avoid single-use plastic","🛍 Use reusable bags","🚯 Never litter near water"],
-  temperature:["💡 Switch to renewable energy","🚲 Cycle instead of driving","🌱 Plant trees"],
-  fishing:    ["🐟 Choose sustainable seafood","📋 Check MSC labels","🎣 Support fishing limits"],
+
+const HABITAT_TYPES = [
+  {
+    icon: "🪸",
+    name: "Lophelia pertusa Reef",
+    description: "A reef built by cold-water corals that provides shelter and feeding areas for many species.",
+  },
+  {
+    icon: "🌿",
+    name: "Coral Garden",
+    description: "Dense groups of corals growing on the deep seafloor and creating three-dimensional habitat.",
+  },
+  {
+    icon: "🧽",
+    name: "Sponge Ground",
+    description: "Large sponge communities that filter water and support small animals, fish and microbes.",
+  },
+  {
+    icon: "🫧",
+    name: "Seep Field",
+    description: "A deep-sea habitat where chemicals rise from the seabed and support specialised communities.",
+  },
+];
+
+const TIPS: Record<string, string[]> = {
+  marineLitter: [
+    "♻ Reduce single-use plastic",
+    "🕸 Support retrieval of lost fishing gear",
+    "🚯 Keep waste away from waterways",
+  ],
+  temperature: [
+    "⚡ Support low-carbon energy",
+    "🚲 Choose lower-emission transport",
+    "🌍 Protect blue-carbon ecosystems",
+  ],
+  acidification: [
+    "🏭 Reduce carbon emissions",
+    "🔬 Support long-term ocean monitoring",
+    "🌱 Protect habitats that store carbon",
+  ],
+  bottomTrawling: [
+    "🗺 Support protected deep-sea areas",
+    "🐟 Choose traceable seafood",
+    "🚫 Support restrictions on destructive fishing gear",
+  ],
 };
 
-// ══════════════════════════════════════════════════════════
-//  MAIN
-// ══════════════════════════════════════════════════════════
-type Scenario={status:string;coral:string;fish:string;plastic:string;outlook:string;moodClass:string};
+type Scenario = {
+  status: string;
+  habitat: string;
+  biodiversity: string;
+  litter: string;
+  fishing: string;
+  outlook: string;
+  moodClass: string;
+};
 
-export default function OceanFutureSimulator(){
-  const [pollution,   setPollution]   = useState(15);
+export default function OceanFutureSimulator() {
+  const [marineLitter, setMarineLitter] = useState(15);
   const [temperature, setTemperature] = useState(10);
-  const [fishing,     setFishing]     = useState(12);
-  const [year,        setYear]        = useState(2024);
-  const [toast,       setToast]       = useState("");
+  const [acidification, setAcidification] = useState(10);
+  const [bottomTrawling, setBottomTrawling] = useState(12);
+  const [year, setYear] = useState(2024);
+  const [toast, setToast] = useState("");
 
-  const health=useMemo(()=>
-    Math.max(0,Math.round(100-pollution*0.45-temperature*0.35-fishing*0.25)),
-    [pollution,temperature,fishing]
+  const health = useMemo(
+    () =>
+      Math.max(
+        0,
+        Math.round(
+          100 -
+            marineLitter * 0.25 -
+            temperature * 0.25 -
+            acidification * 0.25 -
+            bottomTrawling * 0.25,
+        ),
+      ),
+    [marineLitter, temperature, acidification, bottomTrawling],
   );
 
-  useEffect(()=>{
-    if(health>90){ setToast("🏆 Challenge Complete! Ocean health above 90%!"); setTimeout(()=>setToast(""),4500); }
-  },[health]);
+  useEffect(() => {
+    if (health > 90) {
+      setToast("🏆 The deep-sea habitat is in a thriving state!");
+      const timer = window.setTimeout(() => setToast(""), 4500);
+      return () => window.clearTimeout(timer);
+    }
 
-  const scenario:Scenario=useMemo(()=>{
-    if(health>=85) return {status:"Healthy",coral:"Colorful and stable",fish:"Thriving population",plastic:"Minimal impact",outlook:"The ocean is healthy and vibrant.",moodClass:"healthy"};
-    if(health>=70) return {status:"Mostly Stable",coral:"Mostly healthy",fish:"Stable population",plastic:"Visible pollution",outlook:"Life is active, but protection is needed.",moodClass:"warning"};
-    if(health>=40) return {status:"Warning",coral:"Bleaching increasing",fish:"Population decreasing",plastic:"Significant impact",outlook:"Many marine species are struggling.",moodClass:"warning-low"};
-    return {status:"Critical",coral:"Dead zones spreading",fish:"Collapse risk",plastic:"Severe pollution",outlook:"The ecosystem is close to collapse.",moodClass:"critical"};
-  },[health]);
+    return undefined;
+  }, [health]);
 
-  const riskLevels=[
-    {min:85,max:100,label:"Healthy Ocean",  note:"Ocean systems functioning well."},
-    {min:70,max:84, label:"Mostly Stable",  note:"Stable but early warning signs exist."},
-    {min:55,max:69, label:"Warning Signs",  note:"Visible stress from pollution or warming."},
-    {min:35,max:54, label:"Ocean at Risk",  note:"Marine ecosystems under strong pressure."},
-    {min:0, max:34, label:"Critical State", note:"Severe damage and collapse risk."},
+  const scenario: Scenario = useMemo(() => {
+    if (health >= 85) {
+      return {
+        status: "Healthy",
+        habitat: "Cold-water coral, sponge grounds and seep communities are stable.",
+        biodiversity: "Diverse benthic life and healthy predator populations.",
+        litter: "Minimal accumulation and little entanglement risk.",
+        fishing: "Low disturbance to the seafloor.",
+        outlook: "The deep-sea ecosystem is healthy and resilient.",
+        moodClass: "healthy",
+      };
+    }
+
+    if (health >= 70) {
+      return {
+        status: "Mostly Stable",
+        habitat: "The habitat remains functional, but early stress is visible.",
+        biodiversity: "Most species remain present, with some decline.",
+        litter: "Discarded material is becoming visible.",
+        fishing: "Occasional seafloor disturbance is occurring.",
+        outlook: "Protection now can prevent long-term damage.",
+        moodClass: "warning",
+      };
+    }
+
+    if (health >= 55) {
+      return {
+        status: "Warning Signs",
+        habitat: "Coral and sponge grounds are increasingly stressed.",
+        biodiversity: "Sensitive species are declining.",
+        litter: "Lost gear and waste are affecting benthic organisms.",
+        fishing: "Sediment resuspension is reducing habitat quality.",
+        outlook: "The ecosystem is losing resilience.",
+        moodClass: "warning-low",
+      };
+    }
+
+    if (health >= 35) {
+      return {
+        status: "At Risk",
+        habitat: "Coral and sponge habitats are damaged and fragmented.",
+        biodiversity: "Major decline in benthic species and fish.",
+        litter: "Entanglement and seafloor accumulation are widespread.",
+        fishing: "Repeated trawling is altering the seafloor.",
+        outlook: "Recovery will be slow without strong protection.",
+        moodClass: "warning-low",
+      };
+    }
+
+    return {
+      status: "Critical",
+      habitat: "Large areas of deep-sea habitat have been lost.",
+      biodiversity: "Food webs and benthic communities face collapse.",
+      litter: "Severe accumulation of waste and abandoned fishing gear.",
+      fishing: "Intense bottom trawling continues to damage the seabed.",
+      outlook: "Recovery may require decades or centuries.",
+      moodClass: "critical",
+    };
+  }, [health]);
+
+  const riskLevels = [
+    { min: 85, max: 100, label: "Healthy Habitat", note: "Deep-sea systems are functioning well." },
+    { min: 70, max: 84, label: "Mostly Stable", note: "Stable, but early warning signs exist." },
+    { min: 55, max: 69, label: "Warning Signs", note: "Visible stress from multiple pressures." },
+    { min: 35, max: 54, label: "Habitat at Risk", note: "Strong pressure and biodiversity loss." },
+    { min: 0, max: 34, label: "Critical State", note: "Severe damage and collapse risk." },
   ];
 
-  function handleYear(v:number){
-    setYear(v);
-    const extra=Math.floor((v-2024)/10);
-    setPollution(Math.min(100,15+extra*4));
-    setTemperature(Math.min(100,10+extra*5));
-    setFishing(Math.min(100,12+extra*3));
+  function handleYear(value: number) {
+    setYear(value);
+    const decades = Math.floor((value - 2024) / 10);
+    setMarineLitter(Math.min(100, 15 + decades * 4));
+    setTemperature(Math.min(100, 10 + decades * 5));
+    setAcidification(Math.min(100, 10 + decades * 4));
+    setBottomTrawling(Math.min(100, 12 + decades * 3));
   }
-  function reset(){ setPollution(15);setTemperature(10);setFishing(12);setYear(2024); }
 
-  const activeTips=[
-    ...(pollution>40?TIPS.pollution:[]),
-    ...(temperature>40?TIPS.temperature:[]),
-    ...(fishing>40?TIPS.fishing:[]),
-  ].slice(0,5);
+  function reset() {
+    setMarineLitter(15);
+    setTemperature(10);
+    setAcidification(10);
+    setBottomTrawling(12);
+    setYear(2024);
+  }
 
-  return(
+  const activeTips = [
+    ...(marineLitter > 40 ? TIPS.marineLitter : []),
+    ...(temperature > 40 ? TIPS.temperature : []),
+    ...(acidification > 40 ? TIPS.acidification : []),
+    ...(bottomTrawling > 40 ? TIPS.bottomTrawling : []),
+  ].slice(0, 6);
+
+  return (
     <main className={`ocean-page ${scenario.moodClass}`}>
-      <div className="water-overlay"/><div className="bubble-layer"/>
-      {toast&&<div className="challenge-toast" onClick={()=>setToast("")}>{toast} ×</div>}
+      <div className="water-overlay" />
+      <div className="bubble-layer" />
+
+      {toast && (
+        <button className="challenge-toast" onClick={() => setToast("")} type="button">
+          {toast} ×
+        </button>
+      )}
 
       <section className="hero">
         <h1>Ocean in Future</h1>
-        <p>An Ocean Future Simulator</p>
+        <p>Cold-Water Corals & Deep-Sea Future Simulator</p>
         <div className="wave-line">〰</div>
       </section>
 
-      {/* SIDE BY SIDE */}
       <section className="main-layout glass">
         <div className="sliders-col">
-          <Slider icon="♻"  title="Plastic Pollution"  desc="Plastic entering the ocean"   v={pollution}   onChange={setPollution}/>
-          <Slider icon="🌡" title="Temperature Rise"   desc="Increase in ocean temperature" v={temperature} onChange={setTemperature}/>
-          <Slider icon="🐟" title="Overfishing"        desc="Level of overfishing"          v={fishing}     onChange={setFishing}/>
-          <Slider icon="📅" title={`Year: ${year}`}    desc="Jump into the future"          v={year} min={2024} max={2100} onChange={handleYear} isYear/>
+          <Slider
+            icon="🧴"
+            title="Marine Litter"
+            description="Plastic, microplastics, dumped waste and lost fishing gear"
+            value={marineLitter}
+            onChange={setMarineLitter}
+          />
+          <Slider
+            icon="🌡"
+            title="Ocean Warming"
+            description="Rising temperature and marine heatwave pressure"
+            value={temperature}
+            onChange={setTemperature}
+          />
+          <Slider
+            icon="🫧"
+            title="Ocean Acidification"
+            description="Increasing acidity caused by absorbed carbon dioxide"
+            value={acidification}
+            onChange={setAcidification}
+          />
+          <Slider
+            icon="🕸"
+            title="Bottom Trawling"
+            description="Fishing gear dragged across the deep seafloor"
+            value={bottomTrawling}
+            onChange={setBottomTrawling}
+          />
+          <Slider
+            icon="📅"
+            title={`Year: ${year}`}
+            description="Explore a possible future scenario"
+            value={year}
+            min={2024}
+            max={2100}
+            onChange={handleYear}
+            isYear
+          />
+
           <div className="mini-health">
-            <div className="mh-label">Ocean Health</div>
-            <div className="mh-bar"><div className="mh-fill" style={{width:`${health}%`,background:health>=70?"#27f5ff":health>=40?"#FFB430":"#FF4040"}}/></div>
-            <div className="mh-pct" style={{color:health>=70?"#27f5ff":health>=40?"#FFB430":"#FF4040"}}>{health}%</div>
+            <div className="mini-health-label">Deep-Sea Habitat Health</div>
+            <div className="mini-health-bar">
+              <div
+                className="mini-health-fill"
+                style={{
+                  width: `${health}%`,
+                  background: health >= 70 ? "#27f5ff" : health >= 40 ? "#ffb430" : "#ff4040",
+                }}
+              />
+            </div>
+            <div
+              className="mini-health-pct"
+              style={{ color: health >= 70 ? "#27f5ff" : health >= 40 ? "#ffb430" : "#ff4040" }}
+            >
+              {health}%
+            </div>
           </div>
-          <button className="reset-btn" onClick={reset}>↺ Reset</button>
+
+          <button className="reset-btn" onClick={reset} type="button">
+            ↺ Reset Scenario
+          </button>
         </div>
 
         <div className="canvas-col">
           <section className="animals-panel glass">
-        <h2>Marine Life Status</h2>
-        <div className="animals-grid">
-          {ANIMALS.map(a=>(
-            <div key={a.name} className={`animal-card ${health>=a.threshold?"alive":"atrisk"}`}>
-              <span className="animal-name">{a.name}</span>
-              <span className="animal-status">{health>=a.threshold?"✅ Safe":"⚠️ At Risk"}</span>
-              <div className="animal-bar"><div style={{width:`${Math.min(100,(health/a.threshold)*100)}%`}}/></div>
+            <h2>Cold-Water Coral Habitats & Sea Creature Status</h2>
+            <div className="animals-grid">
+              {MARINE_LIFE_STATUS.map((species) => (
+                <div
+                  key={species.name}
+                  className={`animal-card ${health >= species.threshold ? "alive" : "atrisk"}`}
+                >
+                  <span className="animal-name">{species.name}</span>
+                  <span className="animal-status">
+                    {health >= species.threshold ? "✅ Stable" : "⚠️ At Risk"}
+                  </span>
+                  <div className="animal-bar">
+                    <div style={{ width: `${Math.min(100, (health / species.threshold) * 100)}%` }} />
+                  </div>
+                </div>
+              ))}
             </div>
+          </section>
+
+          <OceanCanvas
+            health={health}
+            marineLitter={marineLitter}
+            temperature={temperature}
+            acidification={acidification}
+            bottomTrawling={bottomTrawling}
+          />
+
+          {year > 2024 && (
+            <div className="year-badge">🔮 {year - 2024} years into the future</div>
+          )}
+        </div>
+      </section>
+
+      <section className="result-panel glass">
+        <div className="result-top">
+          <div className="health-circle">
+            <div
+              className="health-ring"
+              style={{
+                background: `conic-gradient(#27f5ff ${health * 3.6}deg, rgba(255,255,255,0.1) ${
+                  health * 3.6
+                }deg)`,
+              }}
+            >
+              <div className="health-inner">
+                <span className="health-title">Conceptual Habitat Score</span>
+                <strong>{health}%</strong>
+                <em>{scenario.status}</em>
+              </div>
+            </div>
+          </div>
+
+          <div className="ohi-risk-box">
+            <h3>Score Interpretation</h3>
+            <div className="ohi-scale-list">
+              {riskLevels.map((level) => (
+                <div
+                  key={level.label}
+                  className={`ohi-scale-row ${
+                    health >= level.min && health <= level.max ? "active" : ""
+                  }`}
+                >
+                  <span className="range">
+                    {level.min}–{level.max}%
+                  </span>
+                  <div>
+                    <strong>{level.label}</strong>
+                    <p>{level.note}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="habitat-panel">
+            <h3 className="habitat-title">🪸 Deep-Sea Habitat Condition</h3>
+            {HABITAT_CONDITIONS.map((condition) => {
+              const isCurrent = health >= condition.min && health <= condition.max;
+              return (
+                <div
+                  key={condition.name}
+                  className={`habitat-row ${isCurrent ? "habitat-current" : ""}`}
+                >
+                  <span>{isCurrent ? "🔵" : "⚪"}</span>
+                  <div>
+                    <strong>{condition.name}</strong>
+                    <p>{condition.description}</p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="scenario-info">
+            <h2>Future Deep-Sea Scenario</h2>
+            <InfoRow icon="🪸" title="Habitat" value={scenario.habitat} />
+            <InfoRow icon="🦐" title="Benthic Biodiversity" value={scenario.biodiversity} />
+            <InfoRow icon="🧴" title="Marine Litter" value={scenario.litter} />
+            <InfoRow icon="🕸" title="Fishing Pressure" value={scenario.fishing} />
+            <InfoRow
+              icon="🌡"
+              title="Ocean Warming"
+              value={
+                temperature < 35
+                  ? "Low warming pressure."
+                  : temperature < 65
+                    ? "Warming is stressing sensitive organisms."
+                    : "Marine heatwave and mass-mortality risk is high."
+              }
+            />
+            <InfoRow
+              icon="🫧"
+              title="Ocean Acidification"
+              value={
+                acidification < 35
+                  ? "Low chemical stress on coral skeletons."
+                  : acidification < 65
+                    ? "Coral calcification and growth are becoming harder."
+                    : "Severe acidification threatens long-term reef survival."
+              }
+            />
+            <InfoRow icon="🌍" title="Outlook" value={scenario.outlook} />
+          </div>
+        </div>
+
+        <p className="scientific-note">
+          This is a conceptual educational model. The score combines four pressures equally and is not an
+          official Ocean Health Index calculation or a prediction from a scientific dataset.
+        </p>
+      </section>
+
+      <section className="habitats-overview glass">
+        <h2>Deep-Sea Habitats Included</h2>
+        <p className="habitats-intro">
+          The simulator now shows the diversity Cristina recommended, not only one coral reef.
+        </p>
+        <div className="habitat-types-grid">
+          {HABITAT_TYPES.map((habitat) => (
+            <article className="habitat-type-card" key={habitat.name}>
+              <span className="habitat-type-icon">{habitat.icon}</span>
+              <div>
+                <h3>{habitat.name}</h3>
+                <p>{habitat.description}</p>
+              </div>
+            </article>
           ))}
         </div>
       </section>
 
-          <OceanCanvas health={health} pollution={pollution} fishing={fishing} temperature={temperature}/>
-          {year>2024&&<div className="year-badge">🔮 {year-2024} years into the future</div>}
-        </div>
-      </section>
-
-      {/* RESULT PANEL */}
-
-  <section className="result-panel glass">
-  <div className="result-top">
-    <div className="health-circle">
-      <div
-        className="health-ring"
-        style={{
-          background: `conic-gradient(#27f5ff ${
-            health * 3.6
-          }deg, rgba(255,255,255,0.1) ${health * 3.6}deg)`,
-        }}
-      >
-        <div className="health-inner">
-          <span className="health-title">Ocean Health Index</span>
-          <strong>{health}%</strong>
-          <em>
-            {health >= 85
-              ? "Healthy"
-              : health >= 70
-              ? "Mostly Stable"
-              : health >= 55
-              ? "Warning Signs"
-              : health >= 35
-              ? "At Risk"
-              : "Critical"}
-          </em>
-        </div>
-      </div>
-    </div>
-
-    <div className="ohi-risk-box">
-      <h3>OHI-Inspired Score</h3>
-
-      <div className="ohi-scale-list">
-        {riskLevels.map((l) => (
-          <div
-            key={l.label}
-            className={`ohi-scale-row ${
-              health >= l.min && health <= l.max ? "active" : ""
-            }`}
-          >
-            <span className="range">
-              {l.min}–{l.max}%
-            </span>
-            <div>
-              <strong>{l.label}</strong>
-              <p>{l.note}</p>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-
-    <div className="lifecycle-panel">
-      <h3 className="lifecycle-title">🪸 Coral Life Cycle</h3>
-
-      {LIFECYCLE.map((lc, i) => {
-        const active = health >= lc.threshold;
-        const current =
-          health >= lc.threshold &&
-          (i === 0 || health < LIFECYCLE[i - 1].threshold + 1);
-
-        return (
-          <div
-            key={lc.stage}
-            className={`lifecycle-row ${active ? "lc-active" : "lc-dead"} ${
-              current ? "lc-current" : ""
-            }`}
-          >
-            <span>{active ? "🟢" : "🔴"}</span>
-            <div>
-              <strong>
-                {lc.stage}: {lc.name}
-              </strong>
-              <p>{lc.desc}</p>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-
-    <div className="scenario-info">
-      <h2>Future Ocean Scenario</h2>
-      <InfoRow icon="🪸" title="Coral Reef" value={scenario.coral} />
-      <InfoRow icon="🐠" title="Fish Population" value={scenario.fish} />
-      <InfoRow icon="🧴" title="Plastic" value={scenario.plastic} />
-      <InfoRow icon="🌍" title="Outlook" value={scenario.outlook} />
-    </div>
-
-    
-  </div>
-</section>
-
-      
-
-      {activeTips.length>0&&(
+      {activeTips.length > 0 && (
         <section className="tips-panel glass">
-          <h2>💡 What You Can Do</h2>
-          <div className="tips-grid">{activeTips.map(tip=><div key={tip} className="tip-card">{tip}</div>)}</div>
+          <h2>💡 What Can Help</h2>
+          <div className="tips-grid">
+            {activeTips.map((tip) => (
+              <div key={tip} className="tip-card">
+                {tip}
+              </div>
+            ))}
+          </div>
         </section>
       )}
 
       <section className="ocean-visual glass">
-        <h2>How This Impacts Human Life</h2>
+        <h2>Major Deep-Sea Ecosystem Impacts</h2>
         <div className="impact-grid">
-          {pollution>70&&<div className="impact-card danger"><h3>Plastic Pollution Crisis</h3><p>Microplastics enter the food chain through fish and sea salt.</p></div>}
-          {temperature>60&&<div className="impact-card warning"><h3>Ocean Temperature Rising</h3><p>Warmer oceans trigger more storms and coral death.</p></div>}
-          {fishing>50&&<div className="impact-card danger"><h3>Overfishing Crisis</h3><p>Fish populations collapsing causes food shortages worldwide.</p></div>}
-          {health<35&&<div className="impact-card critical"><h3>Critical Ecosystem State</h3><p>The ocean is approaching collapse. Marine life is at risk.</p></div>}
-          {health>=35&&health<55&&<div className="impact-card danger"><h3>Human Impact Increasing</h3><p>Food security and coastal communities threatened.</p></div>}
-          {health>=55&&health<70&&<div className="impact-card warning"><h3>Warning Signs Increasing</h3><p>Immediate action can still prevent serious damage.</p></div>}
-          {health>=70&&<div className="impact-card healthy-card"><h3>Hopeful Future 🌱</h3><p>Sustainable actions can protect marine ecosystems.</p></div>}
+          {marineLitter > 35 && (
+            <div className="impact-card danger">
+              <h3>Marine Litter and Entanglement</h3>
+              <p>
+                Plastic, microplastics and abandoned fishing gear can accumulate at depth, entangle ancient
+                corals and remove the habitat they create.
+              </p>
+            </div>
+          )}
+
+          {temperature > 35 && (
+            <div className="impact-card warning">
+              <h3>Ocean Warming and Marine Heatwaves</h3>
+              <p>
+                Prolonged warming can cause mortality events and disrupt vulnerable coral, sponge and benthic
+                communities.
+              </p>
+            </div>
+          )}
+
+          {acidification > 35 && (
+            <div className="impact-card warning">
+              <h3>Ocean Acidification</h3>
+              <p>
+                Increasing acidity makes it harder for cold-water corals to build and maintain their calcium
+                carbonate skeletons.
+              </p>
+            </div>
+          )}
+
+          {bottomTrawling > 35 && (
+            <div className="impact-card danger">
+              <h3>Bottom-Trawling Damage</h3>
+              <p>
+                Heavy fishing gear removes fragile organisms, resuspends sediment and can alter the shape of
+                submarine landscapes.
+              </p>
+            </div>
+          )}
+
+          {health < 35 && (
+            <div className="impact-card critical">
+              <h3>Critical Ecosystem State</h3>
+              <p>
+                Habitat-forming species and food webs face collapse, while recovery may require decades or
+                centuries.
+              </p>
+            </div>
+          )}
+
+          {health >= 70 && (
+            <div className="impact-card healthy-card">
+              <h3>Protected Deep-Sea Future 🌱</h3>
+              <p>
+                Lower emissions, responsible waste management and protection from destructive fishing can
+                preserve deep-sea biodiversity.
+              </p>
+            </div>
+          )}
         </div>
-        <p className="bottom-text">Small changes today, big impact tomorrow. The ocean's future is in our hands.</p>
+        <p className="bottom-text">
+          Deep-sea habitats may be far from sight, but they are connected to climate, biodiversity and human
+          wellbeing.
+        </p>
       </section>
     </main>
   );
 }
 
-function Slider({icon,title,desc,v,onChange,min=0,max=100,isYear=false}:{icon:string;title:string;desc:string;v:number;onChange:(n:number)=>void;min?:number;max?:number;isYear?:boolean}){
-  const level=isYear?"":(v>70?"High":v>35?"Medium":"Low");
-  return(
+type SliderProps = {
+  icon: string;
+  title: string;
+  description: string;
+  value: number;
+  onChange: (value: number) => void;
+  min?: number;
+  max?: number;
+  isYear?: boolean;
+};
+
+function Slider({
+  icon,
+  title,
+  description,
+  value,
+  onChange,
+  min = 0,
+  max = 100,
+  isYear = false,
+}: SliderProps) {
+  const level = isYear ? "" : value > 70 ? "High" : value > 35 ? "Medium" : "Low";
+
+  return (
     <div className="slider-row">
       <div className="slider-icon">{icon}</div>
       <div className="slider-main">
         <div className="slider-head">
-          <div><h3>{title}</h3><p>{desc}</p></div>
+          <div>
+            <h3>{title}</h3>
+            <p>{description}</p>
+          </div>
           <div className="slider-value">
-            <strong>{isYear?v:`${v}%`}</strong>
-            {!isYear&&<span>{level}</span>}
+            <strong>{isYear ? value : `${value}%`}</strong>
+            {!isYear && <span>{level}</span>}
           </div>
         </div>
-        <input type="range" min={min} max={max} value={v} onChange={e=>onChange(Number(e.target.value))}/>
+        <input
+          type="range"
+          min={min}
+          max={max}
+          value={value}
+          aria-label={title}
+          onChange={(event) => onChange(Number(event.target.value))}
+        />
       </div>
     </div>
   );
 }
 
-function InfoRow({icon,title,value}:{icon:string;title:string;value:string}){
-  return(
+function InfoRow({ icon, title, value }: { icon: string; title: string; value: string }) {
+  return (
     <div className="info-row">
       <span>{icon}</span>
-      <div><h4>{title}</h4><p>{value}</p></div>
+      <div>
+        <h4>{title}</h4>
+        <p>{value}</p>
+      </div>
     </div>
   );
 }
