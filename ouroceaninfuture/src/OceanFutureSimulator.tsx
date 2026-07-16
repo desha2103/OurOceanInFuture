@@ -293,6 +293,55 @@ type OceanCanvasProps = {
   bottomTrawling: number;
 };
 
+type HabitatKey =
+  | "lophelia"
+  | "coralGarden"
+  | "seepField"
+  | "spongeGround";
+
+type TransitionPatch = {
+  left: HabitatKey;
+  right: HabitatKey;
+  xRatio: number;
+  yOffset: number;
+  widthRatio: number;
+  height: number;
+  seed: number;
+};
+
+// Small mixed habitat patches that fill the spaces between the four
+// main habitat zones. Ratios keep their positions correct on the
+// 1400px canvas and on any future canvas size.
+const TRANSITION_PATCHES: TransitionPatch[] = [
+  {
+    left: "lophelia",
+    right: "coralGarden",
+    xRatio: 0.245,
+    yOffset: 8,
+    widthRatio: 0.13,
+    height: 112,
+    seed: 31,
+  },
+  {
+    left: "coralGarden",
+    right: "seepField",
+    xRatio: 0.495,
+    yOffset: 10,
+    widthRatio: 0.14,
+    height: 104,
+    seed: 37,
+  },
+  {
+    left: "seepField",
+    right: "spongeGround",
+    xRatio: 0.755,
+    yOffset: 8,
+    widthRatio: 0.135,
+    height: 108,
+    seed: 43,
+  },
+];
+
 
 function OceanCanvas({
   health,
@@ -465,22 +514,143 @@ function OceanCanvas({
       return `rgb(${color[0]}, ${color[1]}, ${color[2]})`;
     }
 
-    function drawDeepSeaFloor(ctx: CanvasRenderingContext2D, width: number, height: number) {
-      const floorGradient = ctx.createLinearGradient(0, height - 70, 0, height);
-      floorGradient.addColorStop(0, "#211a13");
-      floorGradient.addColorStop(1, "#080807");
-      ctx.fillStyle = floorGradient;
+    function seabedHeightAt(
+      x: number,
+      width: number,
+      height: number,
+    ) {
+      const broadSlope = Math.sin((x / width) * Math.PI * 2.15) * 8;
+      const smallRidges = Math.sin(x * 0.018) * 4 + Math.sin(x * 0.0065) * 7;
+      return height - 58 + broadSlope + smallRidges;
+    }
 
+    function drawDeepSeaFloor(
+      ctx: CanvasRenderingContext2D,
+      width: number,
+      height: number,
+    ) {
+      // A distant rear ridge gives the habitats a shared geological setting.
+      const rearGradient = ctx.createLinearGradient(0, height - 150, 0, height - 35);
+      rearGradient.addColorStop(0, "rgba(40, 48, 47, 0.03)");
+      rearGradient.addColorStop(0.55, "rgba(30, 31, 27, 0.36)");
+      rearGradient.addColorStop(1, "rgba(15, 13, 11, 0.82)");
+      ctx.fillStyle = rearGradient;
       ctx.beginPath();
-      ctx.moveTo(0, height - 48);
-      for (let x = 0; x <= width; x += 35) {
-        const y = height - 45 + Math.sin(x * 0.018) * 6 + Math.sin(x * 0.006) * 8;
+      ctx.moveTo(0, height - 95);
+      for (let x = 0; x <= width; x += 24) {
+        const y =
+          height -
+          86 +
+          Math.sin(x * 0.009 + 0.7) * 12 +
+          Math.sin(x * 0.025) * 5;
         ctx.lineTo(x, y);
       }
       ctx.lineTo(width, height);
       ctx.lineTo(0, height);
       ctx.closePath();
       ctx.fill();
+
+      // Main continuous sediment layer.
+      const floorGradient = ctx.createLinearGradient(0, height - 95, 0, height);
+      floorGradient.addColorStop(0, "#34291d");
+      floorGradient.addColorStop(0.34, "#241b13");
+      floorGradient.addColorStop(0.72, "#15100c");
+      floorGradient.addColorStop(1, "#080706");
+      ctx.fillStyle = floorGradient;
+      ctx.beginPath();
+      ctx.moveTo(0, seabedHeightAt(0, width, height));
+      for (let x = 0; x <= width; x += 18) {
+        ctx.lineTo(x, seabedHeightAt(x, width, height));
+      }
+      ctx.lineTo(width, height);
+      ctx.lineTo(0, height);
+      ctx.closePath();
+      ctx.fill();
+
+      // A thin soft haze just above the bottom visually joins all habitat zones.
+      const bottomHaze = ctx.createLinearGradient(0, height - 165, 0, height - 35);
+      bottomHaze.addColorStop(0, "rgba(85, 104, 105, 0)");
+      bottomHaze.addColorStop(0.72, "rgba(74, 80, 70, 0.055)");
+      bottomHaze.addColorStop(1, "rgba(27, 22, 16, 0.18)");
+      ctx.fillStyle = bottomHaze;
+      ctx.fillRect(0, height - 165, width, 135);
+    }
+
+    function drawRubbleMound(
+      ctx: CanvasRenderingContext2D,
+      centerX: number,
+      baseY: number,
+      width: number,
+      height: number,
+      damage: number,
+      seed: number,
+    ) {
+      ctx.save();
+      const moundGradient = ctx.createLinearGradient(0, baseY - height, 0, baseY + 10);
+      moundGradient.addColorStop(0, `rgba(65, 61, 52, ${0.22 + damage * 0.12})`);
+      moundGradient.addColorStop(0.5, `rgba(48, 39, 29, ${0.58 + damage * 0.12})`);
+      moundGradient.addColorStop(1, "rgba(18, 13, 10, 0.94)");
+      ctx.fillStyle = moundGradient;
+      ctx.beginPath();
+      ctx.moveTo(centerX - width * 0.56, baseY + 4);
+      for (let step = 0; step <= 12; step += 1) {
+        const t = step / 12;
+        const x = centerX - width * 0.56 + t * width * 1.12;
+        const dome = Math.sin(t * Math.PI) * height;
+        const roughness =
+          Math.sin((step + seed) * 1.9) * 5 +
+          Math.sin((step + seed) * 0.63) * 3;
+        ctx.lineTo(x, baseY - dome + roughness);
+      }
+      ctx.lineTo(centerX + width * 0.58, baseY + 18);
+      ctx.lineTo(centerX - width * 0.58, baseY + 18);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function drawHabitatImagePart(
+      ctx: CanvasRenderingContext2D,
+      habitat: PreparedHabitat,
+      sourceX: number,
+      sourceWidth: number,
+      destinationX: number,
+      baseY: number,
+      destinationWidth: number,
+      destinationHeight: number,
+      damage: number,
+      alpha: number,
+      flip = false,
+    ) {
+      const sourceHeight = habitat.canvas.height;
+      ctx.save();
+      ctx.globalAlpha = Math.max(0.18, alpha * (1 - damage * 0.58));
+      ctx.filter = [
+        `grayscale(${Math.round(damage * 50)}%)`,
+        `brightness(${Math.round(83 - damage * 23)}%)`,
+        `contrast(${Math.round(108 - damage * 7)}%)`,
+        `saturate(${Math.round(83 - damage * 42)}%)`,
+        "drop-shadow(0 8px 10px rgba(0,0,0,0.42))",
+      ].join(" ");
+
+      if (flip) {
+        ctx.translate(destinationX + destinationWidth, 0);
+        ctx.scale(-1, 1);
+        destinationX = 0;
+      }
+
+      ctx.drawImage(
+        habitat.canvas,
+        sourceX,
+        0,
+        sourceWidth,
+        sourceHeight,
+        destinationX,
+        baseY - destinationHeight,
+        destinationWidth,
+        destinationHeight,
+      );
+      ctx.restore();
     }
 
     function drawHabitatCluster(
@@ -492,117 +662,208 @@ function OceanCanvas({
       targetHeight: number,
       damage: number,
       glowColour: string,
+      seed: number,
     ) {
       const scale = Math.min(
         targetWidth / habitat.canvas.width,
         targetHeight / habitat.canvas.height,
       );
+      const mainWidth = habitat.canvas.width * scale;
+      const mainHeight = habitat.canvas.height * scale;
 
-      const drawWidth = habitat.canvas.width * scale;
-      const drawHeight = habitat.canvas.height * scale;
-      const drawX = centerX - drawWidth / 2;
-      const drawY = baseY - drawHeight;
+      // Habitat organisms now emerge from a shared rock-and-sediment mound.
+      drawRubbleMound(
+        ctx,
+        centerX,
+        baseY + 5,
+        mainWidth * 1.18,
+        Math.max(26, mainHeight * 0.22),
+        damage,
+        seed,
+      );
 
-      // A soft shadow makes the habitat look attached to the seabed.
-      ctx.save();
-      const shadowGradient = ctx.createRadialGradient(
-        centerX,
-        baseY - 7,
-        0,
-        centerX,
-        baseY - 7,
-        drawWidth * 0.55,
-      );
-      shadowGradient.addColorStop(
-        0,
-        `rgba(0, 0, 0, ${0.42 + damage * 0.2})`,
-      );
-      shadowGradient.addColorStop(0.72, "rgba(0, 0, 0, 0.2)");
-      shadowGradient.addColorStop(1, "rgba(0, 0, 0, 0)");
-      ctx.fillStyle = shadowGradient;
-      ctx.beginPath();
-      ctx.ellipse(
-        centerX,
-        baseY - 5,
-        drawWidth * 0.52,
-        Math.max(16, drawHeight * 0.09),
-        0,
-        0,
-        Math.PI * 2,
-      );
-      ctx.fill();
-      ctx.restore();
-
-      // A very subtle local glow separates the habitat from the dark water
-      // without making it look like a rectangular card.
+      // A faint local illumination remains diffuse; there is no panel-shaped glow.
       ctx.save();
       const halo = ctx.createRadialGradient(
         centerX,
-        baseY - drawHeight * 0.42,
-        10,
+        baseY - mainHeight * 0.38,
+        6,
         centerX,
-        baseY - drawHeight * 0.42,
-        drawWidth * 0.62,
+        baseY - mainHeight * 0.34,
+        mainWidth * 0.7,
       );
       halo.addColorStop(0, glowColour);
+      halo.addColorStop(0.55, "rgba(35, 65, 72, 0.045)");
       halo.addColorStop(1, "rgba(0, 0, 0, 0)");
-      ctx.globalAlpha = Math.max(0.08, 0.22 - damage * 0.12);
+      ctx.globalAlpha = Math.max(0.04, 0.14 - damage * 0.08);
       ctx.fillStyle = halo;
       ctx.fillRect(
-        drawX - 30,
-        drawY - 25,
-        drawWidth + 60,
-        drawHeight + 50,
+        centerX - mainWidth * 0.72,
+        baseY - mainHeight - 20,
+        mainWidth * 1.44,
+        mainHeight + 35,
       );
       ctx.restore();
 
-      ctx.save();
-      ctx.globalAlpha = Math.max(0.28, 1 - damage * 0.62);
-      ctx.filter = [
-        `grayscale(${Math.round(damage * 52)}%)`,
-        `brightness(${Math.round(88 - damage * 28)}%)`,
-        `contrast(${Math.round(104 - damage * 8)}%)`,
-        `saturate(${Math.round(86 - damage * 40)}%)`,
-        "drop-shadow(0 10px 14px rgba(0,0,0,0.48))",
-      ].join(" ");
+      // The source is split into overlapping fragments. This prevents each habitat
+      // from looking like one complete product photo pasted onto the canvas.
+      const sourceWidth = habitat.canvas.width;
+      const leftSourceWidth = sourceWidth * 0.58;
+      const rightSourceX = sourceWidth * 0.42;
+      const rightSourceWidth = sourceWidth - rightSourceX;
 
-      ctx.drawImage(
-        habitat.canvas,
-        drawX,
-        drawY,
-        drawWidth,
-        drawHeight,
-      );
-      ctx.restore();
-
-      // Blend the lower edge into the same sediment used by the rest
-      // of the simulator so the habitat appears to grow from the floor.
-      const sedimentGradient = ctx.createLinearGradient(
+      drawHabitatImagePart(
+        ctx,
+        habitat,
         0,
-        baseY - 28,
-        0,
-        baseY + 12,
+        leftSourceWidth,
+        centerX - mainWidth * 0.61,
+        baseY + 7,
+        mainWidth * 0.48,
+        mainHeight * 0.58,
+        damage,
+        0.66,
+        seed % 2 === 0,
       );
-      sedimentGradient.addColorStop(0, "rgba(31, 25, 18, 0)");
-      sedimentGradient.addColorStop(
-        0.58,
-        `rgba(31, 25, 18, ${0.26 + damage * 0.12})`,
-      );
-      sedimentGradient.addColorStop(1, "rgba(12, 10, 8, 0.78)");
 
-      ctx.save();
-      ctx.fillStyle = sedimentGradient;
-      ctx.beginPath();
-      ctx.ellipse(
-        centerX,
+      drawHabitatImagePart(
+        ctx,
+        habitat,
+        rightSourceX,
+        rightSourceWidth,
+        centerX + mainWidth * 0.13,
+        baseY + 9,
+        mainWidth * 0.43,
+        mainHeight * 0.52,
+        damage,
+        0.61,
+        seed % 2 !== 0,
+      );
+
+      drawHabitatImagePart(
+        ctx,
+        habitat,
+        0,
+        sourceWidth,
+        centerX - mainWidth / 2,
         baseY,
-        drawWidth * 0.53,
-        Math.max(18, drawHeight * 0.11),
-        0,
-        Math.PI,
-        Math.PI * 2,
+        mainWidth,
+        mainHeight,
+        damage,
+        0.88,
       );
+
+    }
+
+    function drawTransitionPatch(
+      ctx: CanvasRenderingContext2D,
+      leftHabitat: PreparedHabitat,
+      rightHabitat: PreparedHabitat,
+      centerX: number,
+      baseY: number,
+      totalWidth: number,
+      totalHeight: number,
+      damage: number,
+      seed: number,
+    ) {
+      // A shared mound is drawn first so the two cropped habitat pieces
+      // look rooted in one piece of seabed instead of floating separately.
+      drawRubbleMound(
+        ctx,
+        centerX,
+        baseY + 6,
+        totalWidth * 1.18,
+        Math.max(24, totalHeight * 0.28),
+        damage,
+        seed,
+      );
+
+      const leftSourceX = leftHabitat.canvas.width * 0.48;
+      const leftSourceWidth = leftHabitat.canvas.width * 0.52;
+      const rightSourceWidth = rightHabitat.canvas.width * 0.52;
+
+      drawHabitatImagePart(
+        ctx,
+        leftHabitat,
+        leftSourceX,
+        leftSourceWidth,
+        centerX - totalWidth * 0.58,
+        baseY + 5,
+        totalWidth * 0.62,
+        totalHeight * 0.92,
+        damage,
+        0.73,
+        seed % 2 === 0,
+      );
+
+      drawHabitatImagePart(
+        ctx,
+        rightHabitat,
+        0,
+        rightSourceWidth,
+        centerX - totalWidth * 0.03,
+        baseY + 7,
+        totalWidth * 0.62,
+        totalHeight,
+        damage,
+        0.7,
+        seed % 2 !== 0,
+      );
+
+      // Low sediment hides the lower cut edges and makes both fragments
+      // merge naturally with the continuous seabed.
+      ctx.save();
+      const sediment = ctx.createLinearGradient(
+        0,
+        baseY - totalHeight * 0.24,
+        0,
+        baseY + 18,
+      );
+      sediment.addColorStop(0, "rgba(64, 48, 31, 0)");
+      sediment.addColorStop(0.48, "rgba(67, 50, 32, 0.24)");
+      sediment.addColorStop(1, "rgba(22, 16, 11, 0.92)");
+      ctx.fillStyle = sediment;
+      ctx.beginPath();
+      ctx.moveTo(centerX - totalWidth * 0.62, baseY + 1);
+      for (let step = 0; step <= 10; step += 1) {
+        const t = step / 10;
+        const x = centerX - totalWidth * 0.62 + t * totalWidth * 1.24;
+        const y =
+          baseY -
+          Math.sin(t * Math.PI) * 9 +
+          Math.sin((step + seed) * 1.4) * 2.5;
+        ctx.lineTo(x, y);
+      }
+      ctx.lineTo(centerX + totalWidth * 0.64, baseY + 20);
+      ctx.lineTo(centerX - totalWidth * 0.64, baseY + 20);
+      ctx.closePath();
       ctx.fill();
+
+      // A few stones break up any remaining straight image boundaries.
+      for (let index = 0; index < 7; index += 1) {
+        const x =
+          centerX - totalWidth * 0.48 +
+          (index / 6) * totalWidth * 0.96 +
+          Math.sin(index + seed) * 5;
+        const y = baseY + 1 + Math.sin(index * 1.7 + seed) * 4;
+        const radiusX = 4 + ((index + seed) % 5) * 1.2;
+        const radiusY = 2.5 + ((index + seed) % 3);
+        ctx.beginPath();
+        ctx.ellipse(
+          x,
+          y,
+          radiusX,
+          radiusY,
+          Math.sin(index + seed) * 0.45,
+          0,
+          Math.PI * 2,
+        );
+        ctx.fillStyle =
+          index % 2 === 0
+            ? "rgba(92, 74, 52, 0.72)"
+            : "rgba(48, 39, 29, 0.78)";
+        ctx.fill();
+      }
       ctx.restore();
     }
 
@@ -612,27 +873,92 @@ function OceanCanvas({
       height: number,
       damage: number,
     ) {
-      const baseY = height - 36;
-
-      for (let index = 0; index < 42; index += 1) {
-        const x = ((index * 97 + 35) % width) + Math.sin(index * 2.7) * 13;
-        const size = 3 + (index % 7);
-        const y = baseY + Math.sin(index * 1.9) * 8;
+      for (let index = 0; index < 74; index += 1) {
+        const x = ((index * 83 + 31) % width) + Math.sin(index * 2.7) * 12;
+        const localFloor = seabedHeightAt(x, width, height);
+        const size = 2.5 + (index % 8);
+        const y = localFloor + 3 + Math.sin(index * 1.7) * 7;
 
         ctx.beginPath();
         ctx.ellipse(
           x,
           y,
-          size * 1.35,
-          size * 0.62,
+          size * 1.4,
+          size * 0.58,
           Math.sin(index) * 0.6,
           0,
           Math.PI * 2,
         );
         ctx.fillStyle =
+          index % 4 === 0
+            ? `rgba(119, 96, 66, ${0.25 + damage * 0.1})`
+            : index % 3 === 0
+              ? `rgba(77, 70, 59, ${0.31 + damage * 0.1})`
+              : `rgba(48, 39, 29, ${0.35 + damage * 0.1})`;
+        ctx.fill();
+      }
+    }
+
+    function drawSeabedForeground(
+      ctx: CanvasRenderingContext2D,
+      width: number,
+      height: number,
+      damage: number,
+      tick: number,
+    ) {
+      // This foreground strip hides the straight lower edge of every imported
+      // asset and makes all four zones grow from one continuous sediment bed.
+      const foreground = ctx.createLinearGradient(0, height - 82, 0, height);
+      foreground.addColorStop(0, "rgba(46, 35, 24, 0)");
+      foreground.addColorStop(0.32, `rgba(46, 35, 24, ${0.28 + damage * 0.08})`);
+      foreground.addColorStop(0.7, "rgba(24, 17, 12, 0.9)");
+      foreground.addColorStop(1, "rgba(8, 7, 6, 0.98)");
+      ctx.fillStyle = foreground;
+      ctx.beginPath();
+      ctx.moveTo(0, height - 42);
+      for (let x = 0; x <= width; x += 18) {
+        const y =
+          height -
+          45 +
+          Math.sin(x * 0.021 + 1.3) * 6 +
+          Math.sin(x * 0.007 + 2.2) * 5;
+        ctx.lineTo(x, y);
+      }
+      ctx.lineTo(width, height);
+      ctx.lineTo(0, height);
+      ctx.closePath();
+      ctx.fill();
+
+      // Foreground stones overlap habitat bases and break any remaining outlines.
+      for (let index = 0; index < 64; index += 1) {
+        const x = (index * 71 + 19) % width;
+        const y = height - 38 + Math.sin(index * 1.41) * 7;
+        const radiusX = 4 + (index % 8) * 1.25;
+        const radiusY = 2.5 + (index % 4);
+        ctx.beginPath();
+        ctx.ellipse(
+          x,
+          y,
+          radiusX,
+          radiusY,
+          Math.sin(index * 0.9) * 0.45,
+          0,
+          Math.PI * 2,
+        );
+        ctx.fillStyle =
           index % 3 === 0
-            ? `rgba(90, 77, 61, ${0.34 + damage * 0.12})`
-            : `rgba(57, 49, 39, ${0.38 + damage * 0.12})`;
+            ? "rgba(91, 75, 56, 0.66)"
+            : "rgba(49, 41, 33, 0.76)";
+        ctx.fill();
+      }
+
+      // Slow marine snow very close to the bottom adds depth without looking bubbly.
+      for (let index = 0; index < 20; index += 1) {
+        const x = (index * 113 + tick * 0.035) % width;
+        const y = height - 85 + Math.sin(index * 1.8 + tick * 0.008) * 25;
+        ctx.beginPath();
+        ctx.arc(x, y, 0.8 + (index % 3) * 0.45, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(190, 184, 159, 0.16)";
         ctx.fill();
       }
     }
@@ -817,49 +1143,52 @@ function OceanCanvas({
         ecosystemDamage,
       );
 
-      // The habitats share one continuous seabed. Their widths, heights and
-      // vertical positions are intentionally different so they look like
-      // natural clusters instead of four equal image cards.
+      // Four ecological zones overlap along one continuous seafloor.
+      // The images are fragmented, buried and joined by shared terrain.
       const habitatZones = [
         {
           key: "lophelia",
           label: "Lophelia pertusa reef",
-          centerX: width * 0.13,
-          baseY: height - 27,
-          targetWidth: width * 0.27,
-          targetHeight: 255,
+          centerX: width * 0.115,
+          baseY: seabedHeightAt(width * 0.115, width, height) + 7,
+          targetWidth: width * 0.31,
+          targetHeight: 235,
           sensitivity: 1,
-          glow: "rgba(120, 198, 218, 0.32)",
+          glow: "rgba(118, 197, 216, 0.22)",
+          seed: 2,
         },
         {
           key: "coralGarden",
           label: "Coral garden",
-          centerX: width * 0.375,
-          baseY: height - 31,
-          targetWidth: width * 0.245,
-          targetHeight: 238,
+          centerX: width * 0.365,
+          baseY: seabedHeightAt(width * 0.365, width, height) + 8,
+          targetWidth: width * 0.29,
+          targetHeight: 224,
           sensitivity: 0.92,
-          glow: "rgba(201, 117, 184, 0.28)",
+          glow: "rgba(194, 112, 176, 0.19)",
+          seed: 5,
         },
         {
           key: "seepField",
           label: "Seep field",
           centerX: width * 0.625,
-          baseY: height - 24,
-          targetWidth: width * 0.26,
-          targetHeight: 218,
+          baseY: seabedHeightAt(width * 0.625, width, height) + 10,
+          targetWidth: width * 0.3,
+          targetHeight: 205,
           sensitivity: 0.62,
-          glow: "rgba(78, 218, 194, 0.3)",
+          glow: "rgba(76, 207, 186, 0.19)",
+          seed: 8,
         },
         {
           key: "spongeGround",
           label: "Sponge ground",
-          centerX: width * 0.87,
-          baseY: height - 30,
-          targetWidth: width * 0.235,
-          targetHeight: 205,
+          centerX: width * 0.875,
+          baseY: seabedHeightAt(width * 0.875, width, height) + 8,
+          targetWidth: width * 0.29,
+          targetHeight: 212,
           sensitivity: 0.82,
-          glow: "rgba(213, 176, 104, 0.28)",
+          glow: "rgba(205, 169, 100, 0.18)",
+          seed: 11,
         },
       ];
 
@@ -885,6 +1214,7 @@ function OceanCanvas({
             zone.targetHeight,
             damage,
             zone.glow,
+            zone.seed,
           );
 
           const scale = Math.min(
@@ -897,10 +1227,51 @@ function OceanCanvas({
           drawHabitatLabel(
             context,
             zone.label,
-            Math.max(12, zone.centerX - actualWidth * 0.46),
-            Math.max(30, zone.baseY - actualHeight - 10),
+            Math.max(12, zone.centerX - actualWidth * 0.38),
+            Math.max(30, zone.baseY - actualHeight * 0.88),
           );
         });
+
+        // Fill all three gaps with mixed pieces from the neighbouring habitats.
+        // This is deliberately drawn after the main clusters, so each transition
+        // overlaps both sides and removes the empty "island" effect.
+        const transitionDamage = Math.min(
+          0.92,
+          ecosystemDamage * 0.5 +
+            warmingDamage * 0.18 +
+            acidificationDamage * 0.24 +
+            trawlingDamage * 0.38,
+        );
+
+        TRANSITION_PATCHES.forEach((patch) => {
+          const leftHabitat = s.habitats[patch.left];
+          const rightHabitat = s.habitats[patch.right];
+          if (!leftHabitat || !rightHabitat) return;
+
+          const centerX = width * patch.xRatio;
+          const baseY =
+            seabedHeightAt(centerX, width, height) + patch.yOffset;
+
+          drawTransitionPatch(
+            context,
+            leftHabitat,
+            rightHabitat,
+            centerX,
+            baseY,
+            width * patch.widthRatio,
+            patch.height,
+            transitionDamage,
+            patch.seed,
+          );
+        });
+
+        drawSeabedForeground(
+          context,
+          width,
+          height,
+          ecosystemDamage,
+          tick,
+        );
       } else {
         context.save();
         context.textAlign = "center";
@@ -1211,9 +1582,6 @@ const MARINE_LIFE_STATUS = [
   { name: "Cold-Water Coral 🪸", threshold: 65 },
   { name: "Deep-Sea Sponge 🧽", threshold: 58 },
   { name: "Benthic Fish 🐟", threshold: 48 },
-  { name: "Deep-Sea Crustaceans 🦐", threshold: 40 },
-  { name: "Deep-Sea Octopus 🐙", threshold: 45 },
-  { name: "Deep-Sea Shark 🦈", threshold: 30 },
   { name: "Brittle Star ⭐", threshold: 38 },
   { name: "Sea Anemone 🌸", threshold: 42 },
 ];
