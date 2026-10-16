@@ -325,11 +325,16 @@ function OceanCanvas({
   }, []);
 
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+  const maybeCanvas = canvasRef.current;
+  if (!maybeCanvas) return;
 
-    const context = canvas.getContext("2d");
-    if (!context) return;
+  const canvas: HTMLCanvasElement = maybeCanvas;
+
+  const maybeContext = canvas.getContext("2d");
+
+    if (!maybeContext) return;
+
+    const context: CanvasRenderingContext2D = maybeContext;
 
     const WATER_COLUMN_TOP = 66;
 
