@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 
 import { useSimulator } from "../state/SimulatorContext";
+
 import {
   CORAL_SPECIES,
   deadCoralSrc,
@@ -20,18 +21,19 @@ const GROUPS: {
     driver: "acidification",
     title: "Ocean Acidification",
     blurb:
-      "Dissolves calcium carbonate skeletons — hits boulder & plate corals hardest.",
+      "Increasing acidity can affect the skeletons of cold-water corals.",
   },
   {
     driver: "bottomTrawling",
     title: "Bottom Trawling",
     blurb:
-      "Physically damages fragile branches — hits branching corals hardest.",
+      "Fishing gear can break and damage fragile coral colonies.",
   },
   {
     driver: "marineLitter",
     title: "Marine Litter",
-    blurb: "Entangles and smothers coral surfaces of every shape.",
+    blurb:
+      "Lost fishing gear and marine litter can entangle and damage corals.",
   },
 ];
 
@@ -43,11 +45,28 @@ export default function CoralImpactList() {
 
   useEffect(() => {
     if (!hash) return;
+
     const el = document.getElementById(hash.slice(1));
+
     if (el) {
-      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
     }
   }, [hash]);
+
+  // Display only two entries from the partner's coral data.
+  // This does not affect the main ocean simulator.
+  const showcasedCorals = CORAL_SPECIES.slice(0, 2);
+
+  // Display only environmental groups that contain
+  // one of the two selected coral entries.
+  const visibleGroups = GROUPS.filter((group) =>
+    showcasedCorals.some(
+      (coral) => coral.driver === group.driver
+    )
+  );
 
   const driverValues: Record<CoralDriver, number> = {
     acidification,
@@ -64,68 +83,86 @@ export default function CoralImpactList() {
           ← Back to simulator
         </Link>
 
-        <span className="coral-story-kicker">A story in three chapters</span>
+        <span className="coral-story-kicker">
+          Explore Coral Changes
+        </span>
 
-        <h1>16 Coral Colonies, One Reef's Story</h1>
+        <h1>
+          Cold-Water Coral: How Conditions Change
+        </h1>
 
         <p>
-          Somewhere on the seafloor, sixteen real coral colonies are
-          living through the same story — just told by three
-          different pressures. Pick a colony to open its story in a
-          new tab and follow it, chapter by chapter, from healthy
-          reef to collapse.
+          Explore two selected coral models and discover
+          how environmental pressures can affect their
+          condition. Select a coral to view its interactive
+          3D model and follow its changing stages.
         </p>
       </section>
 
-      {GROUPS.map((group, groupIndex) => {
-        const species = CORAL_SPECIES.filter(
-          (c) => c.driver === group.driver,
+      {visibleGroups.map((group, groupIndex) => {
+        const species = showcasedCorals.filter(
+          (coral) => coral.driver === group.driver
         );
 
         const value = driverValues[group.driver];
 
         return (
-          <section key={group.driver} className="coral-group">
+          <section
+            key={group.driver}
+            className="coral-group"
+          >
             <div className="coral-group-header">
               <h2>
                 Part {groupIndex + 1}: {group.title}
               </h2>
+
               <span className="coral-group-value">
                 Currently {value}%
               </span>
             </div>
 
-            <p className="coral-group-blurb">{group.blurb}</p>
+            <p className="coral-group-blurb">
+              {group.blurb}
+            </p>
 
             <div className="coral-list-grid">
               {species.map((coral) => {
                 const currentIndex = getStageIndex(
                   coral.stages,
-                  value,
+                  value
                 );
 
-                const currentStage = coral.stages[currentIndex];
+                const currentStage =
+                  coral.stages[currentIndex];
+
                 const isCollapsed =
-                  currentIndex === coral.stages.length - 1;
+                  currentIndex ===
+                  coral.stages.length - 1;
 
                 return (
                   <Link
+                    key={coral.key}
+                    id={coral.key}
                     to={`/coral-impact/${coral.key}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    key={coral.key}
-                    id={coral.key}
                     className={`coral-list-card severity-${currentIndex}`}
                   >
                     <div className="coral-list-thumb">
                       <img
-                        src={isCollapsed ? deadCoralSrc : coral.image}
+                        src={
+                          isCollapsed
+                            ? deadCoralSrc
+                            : coral.image
+                        }
                         alt={coral.name}
                         style={{
                           filter: `saturate(${
-                            1 - (currentIndex / 3) * 0.8
+                            1 -
+                            (currentIndex / 3) * 0.8
                           }) brightness(${
-                            1 - (currentIndex / 3) * 0.3
+                            1 -
+                            (currentIndex / 3) * 0.3
                           })`,
                         }}
                       />
@@ -134,11 +171,13 @@ export default function CoralImpactList() {
                     <div className="coral-list-info">
                       <div className="coral-list-name">
                         <span>{coral.icon}</span>
+
                         <h3>{coral.name}</h3>
                       </div>
 
                       <span className="coral-list-driver">
-                        Chapter {currentIndex + 1} of {coral.stages.length}
+                        Chapter {currentIndex + 1} of{" "}
+                        {coral.stages.length}
                       </span>
 
                       <span
@@ -148,7 +187,9 @@ export default function CoralImpactList() {
                       </span>
                     </div>
 
-                    <span className="coral-list-arrow">↗</span>
+                    <span className="coral-list-arrow">
+                      ↗
+                    </span>
                   </Link>
                 );
               })}

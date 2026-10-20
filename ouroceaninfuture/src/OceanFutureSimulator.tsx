@@ -7,6 +7,7 @@ import {
 } from "react";
 
 import "./OceanFutureSimulator.css";
+import { useNavigate } from "react-router-dom";
 
 import netSrc from "./assets/fishing-net.png";
 import plasticSrc from "./assets/plastic-bottle1.png";
@@ -115,6 +116,52 @@ type OceanCanvasProps = {
   bottomTrawling: number;
 };
 
+/**
+ * The three cold-water coral PNGs are already drawn by drawCoralColony.
+ * Match their original positions and the seabed terrain when testing clicks.
+ * This changes interaction only, not the rendered ecosystem.
+ */
+function isNearColdWaterCoral(x: number, y: number, width: number, height: number) {
+  const gauss = (position: number, center: number, spread: number, lift: number) => {
+    const distance = (position - center) / spread;
+    return Math.exp(-(distance * distance)) * lift;
+  };
+
+  const seabedY = (position: number) => {
+    const broad = Math.sin((position / width) * Math.PI * 2.15) * 8;
+    const local =
+      Math.sin(position * 0.012) * 3 +
+      Math.sin(position * 0.0049) * 5 +
+      Math.sin(position * 0.028) * 1.6;
+    const lift =
+      gauss(position, width * 0.08, width * 0.055, 24) +
+      gauss(position, width * 0.18, width * 0.065, 15) +
+      gauss(position, width * 0.31, width * 0.052, 18) +
+      gauss(position, width * 0.48, width * 0.07, 12) +
+      gauss(position, width * 0.63, width * 0.055, 17) +
+      gauss(position, width * 0.79, width * 0.06, 22) +
+      gauss(position, width * 0.92, width * 0.055, 26);
+    return height - 72 + broad + local - lift + 2;
+  };
+
+  const colonies = [
+    { x: width * 0.075, imageWidth: 210, imageHeight: 155 },
+    { x: width * 0.18, imageWidth: 175, imageHeight: 130 },
+    { x: width * 0.46, imageWidth: 160, imageHeight: 118 },
+  ];
+  const padding = 24;
+
+  return colonies.some((coral) => {
+    const base = seabedY(coral.x);
+    return (
+      x >= coral.x - coral.imageWidth / 2 - padding &&
+      x <= coral.x + coral.imageWidth / 2 + padding &&
+      y >= base - coral.imageHeight - padding &&
+      y <= base + padding
+    );
+  });
+}
+
 function OceanCanvas({
   health,
   marineLitter,
@@ -123,6 +170,7 @@ function OceanCanvas({
   bottomTrawling,
 }: OceanCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const navigate = useNavigate();
 
   const state = useRef({
     fish: [] as Fish[],
@@ -315,6 +363,12 @@ function OceanCanvas({
 
       state.current.mouseY =
         (event.clientY - rect.top) * (canvas.height / rect.height);
+      canvas.style.cursor = isNearColdWaterCoral(
+        state.current.mouseX,
+        state.current.mouseY,
+        canvas.width,
+        canvas.height,
+      ) ? "pointer" : "crosshair";
     },
     [],
   );
@@ -323,6 +377,20 @@ function OceanCanvas({
     state.current.mouseX = -999;
     state.current.mouseY = -999;
   }, []);
+
+  const onCoralClick = useCallback(
+    (event: React.MouseEvent<HTMLCanvasElement>) => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const rect = canvas.getBoundingClientRect();
+      const x = (event.clientX - rect.left) * (canvas.width / rect.width);
+      const y = (event.clientY - rect.top) * (canvas.height / rect.height);
+      if (isNearColdWaterCoral(x, y, canvas.width, canvas.height)) {
+        navigate("/coral-impact");
+      }
+    },
+    [navigate],
+  );
 
   useEffect(() => {
   const maybeCanvas = canvasRef.current;
@@ -3221,6 +3289,7 @@ function OceanCanvas({
       onMouseLeave={
         onMouseLeave
       }
+      onClick={onCoralClick}
     />
   );
 }
